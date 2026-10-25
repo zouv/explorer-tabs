@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>ExplorerTabHost.Core</AssemblyName></PropertyGroup>
+  <ItemGroup><Reference Include="System.Drawing" /><Reference Include="System.IO.Compression" /><Reference Include="System.Runtime.Serialization" /></ItemGroup>
+</Project>

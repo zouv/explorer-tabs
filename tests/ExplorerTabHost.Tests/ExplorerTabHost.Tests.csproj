@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><UseWindowsForms>true</UseWindowsForms><ApplicationManifest>..\..\src\ExplorerTabHost.App\app.manifest</ApplicationManifest></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\src\ExplorerTabHost.Core\ExplorerTabHost.Core.csproj" /><ProjectReference Include="..\..\src\ExplorerTabHost.App\ExplorerTabHost.App.csproj" /></ItemGroup>
+  <ItemGroup><Reference Include="System.IO.Compression" /></ItemGroup>
+</Project>
