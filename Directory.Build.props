@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
-    <Version>0.6.2</Version>
+    <Version>0.6.3</Version>
     <Product>ExplorerTabs</Product>
     <Description>Tabbed host for Windows File Explorer windows.</Description>
     <LangVersion>latest</LangVersion>

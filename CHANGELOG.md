@@ -3,7 +3,16 @@
 用户可感知变化按版本归档，遵循新增 / 变更 / 修复 / 移除 / 安全类别。
 历史版本准确发布日期未补造；迁移日为 2026-10-25。
 
-## [未发布]
+## [0.6.3] — 2026-10-26
+
+### 新增
+- 根目录新增 `package.bat`（等价 `sh manager.sh package`），按 `dist/dev` + `dist/release` 统一出包：`dist/dev/ExplorerTabs_<版本>_x64-unpack-debug.zip`、`dist/release/unpack/` 可运行目录、`dist/release/ExplorerTabs_<版本>_x64-unpack.zip`。版本号取 `Directory.Build.props`，dev 含 PDB / 构建日志 / build-info，release 不含 PDB。
+- 仓库关联 GitHub `zouv/explorer-tabs`，发布页提供免安装 release zip、debug zip 与 SHA-256 校验文件。
+
+### 变更
+- `README.md` 按 GitHub 仓库规范重写：功能概览、系统要求、下载安装、快捷键、安全模型、已知限制、构建 / 测试 / 打包与文档索引；新增单行 / 多行界面截图。release 包内同时包含 README 引用的图标与截图，离线打开也能正常显示。
+- `dist` 出包目录改为 dev / release 两套，每版本 zip 文件名自带版本号；历史 `dist/vX-release` 目录原样保留。`scripts/build.ps1` 默认输出改为 `.runtime/build/ExplorerTabs-dev`，避免与正式包混放。
+- 打包不生成 setup.exe（不引入第三方 NuGet / Inno Setup），且不终止运行中的 ExplorerTabs 或用户 Explorer；目标包正在运行时直接报错。
 
 ## [0.6.2] — 2026-10-26
 ### 统一名称与工程
