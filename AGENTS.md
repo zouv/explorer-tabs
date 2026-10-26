@@ -78,7 +78,7 @@
 
 
 - 技术栈：C# / WinForms / .NET Framework 4.8 / x64，无第三方 NuGet。
-- 构建/运行：手动运行 dist/v0.6.1-release/ExplorerTabs.exe；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
+- 构建/运行：手动运行 dist/release/unpack/ExplorerTabs.exe（由 package.bat 产出）；打包：package.bat / sh manager.sh package；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
 - 代码风格：匹配现有风格（命名、目录约定、注释语言），改动小而聚焦。
 -
 

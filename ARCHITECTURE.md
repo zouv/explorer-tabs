@@ -18,7 +18,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 多行 / 排序 / 设置 | TabStrip.cs、SettingsDialog.cs、AppSettings.cs、WorkspaceUiTests.cs | ShellExplorerBackend |
 | 分离黑块 / 任务栏 / 事故恢复 | HostController.cs、NativeWindowApi.cs、RestorePresentation.cs、RecoveryJournal.cs | 收藏库、快捷键设置 UI |
 | 产品 / 工程改名 / 旧版兼容 | ProductIdentity.cs、Program.cs、BrandingTests.cs、工程文件、scripts/build.ps1 | Shell ABI、原生恢复执行 |
-| 发布 / 自动验证 | scripts/build.ps1、manager.sh、Directory.Build.props、tests/ExplorerTabs.Tests | 用户历史反馈 |
+| 发布 / 自动验证 / 打包 | scripts/build.ps1、scripts/package.ps1、package.bat、manager.sh、Directory.Build.props、tests/ExplorerTabs.Tests | 用户历史反馈、界面实现细节 |
 
 ## 1. 文件职责
 | 文件 | 职责 |
@@ -46,11 +46,11 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | src/ExplorerTabs.Core/NativeWindowApi.cs、TaskbarService.cs、RestorePresentation.cs、RecoveryJournal.cs | Win32 / Shell 操作、恢复结构 / 显示顺序、只读呈现采样、事故日志 |
 | tests/ExplorerTabs.Tests/DeferredCreationTests.cs、ChromeUiTests.cs | fake 创建取消 / 失败 / lease 并发与隐藏真实窗框 / 紧凑布局 / 图标 tooltip；不运行真实 Explorer |
 | tests/ExplorerTabs.Tests/EmbeddedChromeTests.cs | 自注册 Ribbon 类与隐藏自建 HWND 测标题区测量 / 根窗口裁切 / 未知布局回退 / 非 Explorer 恢复；不操作真实 Shell |
-| assets/icons/ | 三版原创 SVG、对比预览与暂用 A 的多尺寸 ICO / 嵌入资源 |
+| assets/icons/、assets/screenshots/ | 三版原创 SVG、对比预览、暂用 A 的多尺寸 ICO / 嵌入资源；README 引用的离屏单行 / 多行截图（不含真实 Explorer 内容） |
 | tests/ExplorerTabs.Tests/WorkspaceTests.cs、WorkspaceUiTests.cs | 库 / 快捷键 / close / STA 策略；隐藏 UI 会话、迟到结果、多行跨行拖动、设置 / 搜索 |
 | tests/ExplorerTabs.Tests/Program.cs、FeatureTests.cs、CreationUiTests.cs、ShellInteropTests.cs | 基线断言、fake Shell、自建透明窗口、隐藏 UI 与原生 ABI stub |
-| scripts/build.ps1、manager.sh、Directory.Build.props | net48 / x64 / 版本、受保护发布、可选安全 smoke |
-| dist/、artifacts/ | Git 忽略的版本化发布、离屏图像与验证日志 |
+| scripts/build.ps1、scripts/package.ps1、package.bat、manager.sh、Directory.Build.props | net48 / x64 / 版本单一来源、受保护开发快照、可选安全 smoke；package 产出 dev zip + release unpack/zip，不杀宿主 |
+| dist/、artifacts/ | Git 忽略的发布与验证产物：`dist/dev` 版本化 debug zip、`dist/release/unpack` + release zip；历史 `dist/vX-release` 原样保留；artifacts/ 存离屏图像与验证日志 |
 | docs/ | 使用 / 历史反馈；不改用户已填清单 |
 | AGENTS.md、CLAUDE.md、ARCHITECTURE.md、ROADMAP.md、CHANGELOG.md、HANDOFF.md | 规则、图谱、计划、发布、进行中接力 |
 | README.md、check-docs.sh、.claude/skills/ | 使用入口、模板机械体检与显式文档技能 |
@@ -77,6 +77,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 设置 | SettingsDialog、MainForm.ApplySettings、AppSettingsStore | wrap 默认关闭；22 操作可下拉重绑 / 留空禁用，重复拒绝；保存成功才应用 |
 | 正常退出 | MainForm.OnClosingWithSession → OnClosing | 取消未完成任务，预保存普通目录，再原分离逻辑；恢复失败阻止退出，下次重试重新捕获 |
 | 分离 / 事故恢复 | HostController.Detach / DetachAll、Program.RecoverBeforeStartup | 保持隐藏恢复结构，再显示 / 重绘 / 任务栏注册；事故记录优先于目录重开 |
+| 打包 / 出包目录 | scripts/package.ps1 的 Invoke-Build / Copy-AppFiles / Write-BuildInfo / New-Zip、package.bat、manager.sh package | 版本读 Directory.Build.props；只清 dist/dev、dist/release、.runtime/staging；dev zip 有顶层目录、release zip 无；不生成 setup.exe；不 taskkill 宿主 |
 
 ## 3. 重点链路与易踩坑
 - 0.4.1 Navigate2 使用完整原生 dual vtable、PIDL 的 VT_ARRAY|VT_UI1 与 optional VT_EMPTY。原生 stub 与用户真机基线均验证；不改回晚绑定 Type.Missing。
@@ -109,6 +110,13 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - JSON DTO 与字段 / enum 数值不改；Fixtures/v0.6.1 是旧程序集生成的合成数据，读取与重序列化逐字节核对；读取事故日志不会执行恢复。
 - 默认测试的 mutex 探针仅启动测试 runner，自建 Guid 用户身份、CreateNoWindow，不读取实际用户的状态或窗口。历史 dist / 验证记录与用户清单原样保留，发布只复制新构建的明确文件名单。
 
+### 3.7 打包与出包目录
+- `package.bat` → `scripts/package.ps1`；版本只从 `Directory.Build.props` 的 `<Version>` 读取，不在脚本里写死。
+- 只清理 `dist/dev`、`dist/release`、`.runtime/staging`；历史 `dist/vX-release` 是用户入口与历史包，禁止整目录删除。暂存目录仅在两个 zip 都成功后删除。
+- dev zip 根含 `ExplorerTabs_<版本>_x64-unpack-debug/`；release zip 从 `dist/release/unpack` 内部打包，解压后 exe 直接在根下。release 不含 PDB，dev 含 PDB / build-info / logs；release 另复制 README.md 及其引用的图标 / 截图，保证离线可读。
+- 不生成 setup.exe：项目不引入第三方 NuGet 或 Inno Setup，release 以免安装解压包分发。
+- 打包前只检测运行中的 ExplorerTabs：目标位于 `dist/` 下则报错退出；绝不 taskkill、不关闭用户 Explorer。zip 用 .NET `ZipFile` 生成，不依赖外部 tar。
+
 ## 4. 接口契约
 | 接口 | 契约 |
 |---|---|
@@ -129,5 +137,5 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 Windows + .NET SDK + .NET Framework 4.8 Developer Pack，无第三方 NuGet。
 入口：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke。
 测试不启动真实 Shell、不 Show 交互宿主、不注册全局钩子；原生 COM stub 只本机 PIDL 解析。--workspace-ui-smoke 包含工作空间与窗框测试（100 + 95）；--chrome-ui-smoke 可单独运行。--render-ui / --render-tabs / --render-workspace / --render-picker / --render-settings / --render-settings-keys / --render-rename 生成隐藏实际控件图像。
-发布 dist/v0.6.2-release/ExplorerTabs.exe；保留所有旧 dist 原文件名 / 内容，清理仅限已核验项目 bin / obj；最终验证数量以 CHANGELOG / HANDOFF 为准。
+0.6.2 发布包 dist/v0.6.2-release/ExplorerTabs.exe 原样保留；当前打包入口与 dist 规则见 §3.7；保留所有旧 dist 原文件名 / 内容，清理仅限已核验项目 bin / obj；最终验证数量以 CHANGELOG / HANDOFF 为准。
 真实关闭、会话批量创建、新快捷键前台边界及多行实际 DPI 体验留用户在对话验收，不写新回归清单。

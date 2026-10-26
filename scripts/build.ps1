@@ -1,5 +1,5 @@
 param(
-    [string]$OutputDirectory = "dist\v0.6.2-release",
+    [string]$OutputDirectory = ".runtime\build\ExplorerTabs-dev",
     [switch]$NativeSmoke,
     [switch]$CrossProcessSmoke,
     [switch]$TabUiSmoke,

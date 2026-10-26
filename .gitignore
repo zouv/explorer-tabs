@@ -5,3 +5,15 @@
 TestResults/
 dist/
 artifacts/
+.runtime/
+
+
+# Local AI/editor session settings (shared skills and rules remain tracked)
+/.claude/settings.local.json
+/.claude/sessions/
+/.codex/sessions/
+/.codex/logs/
+/.codex/config.local.toml
+/.opencode/sessions/
+/.history/
+
