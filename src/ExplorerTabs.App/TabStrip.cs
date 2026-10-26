@@ -13,6 +13,7 @@ namespace ExplorerTabs.App
         private readonly ToolTip tips = new ToolTip();
         private readonly Timer scroll = new Timer { Interval = 60 };
         private TabButton? source;
+        private Control? trailing;
         private Point origin;
         private Point pointer;
         private bool dragging;
@@ -32,7 +33,7 @@ namespace ExplorerTabs.App
         }
         public bool IsInteracting => source != null || Controls.Cast<Control>().Any(c => c.ContextMenuStrip?.Visible == true);
         public event Action<WindowSession>? Selected;
-        public event Action<WindowSession>? MiddleDetach;
+        public event Action<WindowSession>? MiddleClose;
         public event Action<WindowSession, int>? MoveRequested;
         public event Action<bool>? InteractionChanged;
 
@@ -54,7 +55,7 @@ namespace ExplorerTabs.App
             try
             {
                 tips.RemoveAll();
-                foreach (Control control in Controls.Cast<Control>().ToArray())
+                foreach (Control control in Controls.Cast<Control>().Where(c => c is TabButton).ToArray())
                 {
                     var menu = control.ContextMenuStrip;
                     Controls.Remove(control);
@@ -71,20 +72,29 @@ namespace ExplorerTabs.App
                         UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 6, 0),
                         BackColor = active == session ? HostTheme.Canvas : HostTheme.Chrome,
                         AccessibleName = session.DisplayTitle,
-                        AccessibleDescription = "拖动排序；右键管理；中键分离为独立窗口，不关闭 Explorer。"
+                        AccessibleDescription = "拖动排序；右键管理；中键关闭 Explorer。"
                     };
                     button.FlatAppearance.BorderSize = active == session ? 1 : 0;
                     button.FlatAppearance.BorderColor = Color.FromArgb(74, 127, 202);
                     button.ContextMenuStrip = createMenu(session);
                     tips.SetToolTip(button, session.DisplayTitle + "\nExplorer：" + session.Title +
-                        "\n拖动排序 · 右键管理 · 中键分离（不关闭）");
+                        "\n拖动排序 · 右键管理 · 中键关闭 Explorer");
                     button.Width = MeasureTabWidth(button);
                     Controls.Add(button);
                 }
+                if (trailing != null && Controls.Contains(trailing)) Controls.SetChildIndex(trailing, Controls.Count - 1);
                 // UpdateRows sizes the viewport before publishing the new scroll extent.
                 // A transient horizontal scrollbar at the old height can leave vertical scrolling stuck on.
             }
             finally { ResumeLayout(false); UpdateRows(); AutoScrollPosition = offset; }
+        }
+
+        /// <summary>Keeps a non-tab action (new tab) flowing directly after the last tab.</summary>
+        public void SetTrailingControl(Control control)
+        {
+            trailing = control;
+            if (!Controls.Contains(control)) Controls.Add(control);
+            UpdateRows();
         }
 
         public void Reveal(WindowSession session)
@@ -114,7 +124,7 @@ namespace ExplorerTabs.App
             Control? previous = null;
             foreach (Control c in Controls)
             {
-                c.Width = Math.Min(MeasureTabWidth(c), Math.Max(1, available - c.Margin.Horizontal));
+                if (c != trailing) c.Width = Math.Min(MeasureTabWidth(c), Math.Max(1, available - c.Margin.Horizontal));
                 SetFlowBreak(c, false);
                 int extent = c.Width + c.Margin.Horizontal;
                 if (used > 0 && used + extent > available)
@@ -130,9 +140,11 @@ namespace ExplorerTabs.App
             SuspendLayout();
             try
             {
+                SizeTrailing();
                 if (!WrapContents)
                 {
-                    foreach (Control c in Controls) { c.Width = MeasureTabWidth(c); SetFlowBreak(c, false); }
+                    foreach (Control c in Controls)
+                    { if (c == trailing) continue; c.Width = MeasureTabWidth(c); SetFlowBreak(c, false); }
                     int extent = Controls.Cast<Control>().Sum(c => c.Width + c.Margin.Horizontal) + Padding.Horizontal;
                     SetStripHeight(Pixels(36) + (extent > Width ? SystemInformation.HorizontalScrollBarHeight : 0));
                     AutoScrollMinSize = new Size(extent, 0);
@@ -150,6 +162,12 @@ namespace ExplorerTabs.App
                 }
             }
             finally { ResumeLayout(true); adjusting = false; }
+        }
+        private void SizeTrailing()
+        {
+            if (trailing == null) return;
+            trailing.Size = new Size(Pixels(32), Pixels(32));
+            trailing.Margin = new Padding(Pixels(4), 0, Pixels(2), 0);
         }
         protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); if (!adjusting) UpdateRows(); }
         protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); if (!adjusting) UpdateRows(); }
@@ -212,7 +230,7 @@ namespace ExplorerTabs.App
             BeginInvoke(new Action(() => { if (!IsDisposed) action(); }));
         }
         internal void Select(WindowSession session) => Selected?.Invoke(session);
-        internal void Detach(WindowSession session) => MiddleDetach?.Invoke(session);
+        internal void Close(WindowSession session) => MiddleClose?.Invoke(session);
 
         private TabButton[] Remaining() => Controls.OfType<TabButton>().Where(b => b != source).ToArray();
         private void UpdateInsertion()
@@ -311,7 +329,7 @@ namespace ExplorerTabs.App
                 suppressClick = suppressClick || strip.IsDragging(this);
                 var move = strip.EndPointer(this, e.Button, StripPoint(e.Location));
                 base.OnMouseUp(e);
-                if (e.Button == MouseButtons.Middle) strip.Queue(() => strip.Detach(Session));
+                if (e.Button == MouseButtons.Middle) strip.Queue(() => strip.Close(Session));
                 else if (move != null) strip.Queue(() => strip.PublishMove(move));
             }
             protected override void OnClick(EventArgs e)

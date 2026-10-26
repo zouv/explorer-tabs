@@ -21,6 +21,8 @@ namespace ExplorerTabs.Tests
                 {
                     var chrome = UiField<Panel>(form, "chrome"); var strip = UiField<FlowLayoutPanel>(form, "tabs"); var content = UiField<Panel>(form, "content");
                     var toolbar = UiField<FlowLayoutPanel>(form, "commandToolbar");
+                    var toolbarRight = UiField<FlowLayoutPanel>(form, "commandToolbarRight");
+                    var toolbarHost = toolbar.Parent!;
                     Check(UiField<object?>(form, "keyboard") == null, "hidden chrome does not register global keyboard hook");
                     Check(form.Icon != null && form.Icon.Width > 0, "application icon is loaded from embedded multi-size ICO");
                     long style = ChromeStyle(form.Handle, -16).ToInt64();
@@ -43,7 +45,7 @@ namespace ExplorerTabs.Tests
                     foreach (int width in new[] { 720, 1100, 1600 })
                     {
                         form.Width = width; form.PerformLayout(); strip.PerformLayout();
-                        Check(chrome.Top == 1 && toolbar.Top == chrome.Bottom && content.Top == toolbar.Bottom, "browser chrome and toolbar dock before content at width " + width);
+                        Check(chrome.Top == 1 && toolbarHost.Top == chrome.Bottom && content.Top == toolbarHost.Bottom, "browser chrome and toolbar dock before content at width " + width);
                         using (var image = new Bitmap(toolbar.Width, toolbar.Height))
                         {
                             toolbar.DrawToBitmap(image, toolbar.ClientRectangle);
@@ -53,12 +55,24 @@ namespace ExplorerTabs.Tests
                         Check(chrome.Height <= 36 && toolbar.Height <= 36, "empty chrome plus toolbar occupies at most 72 client pixels at width " + width);
                         Check(strip.Right <= captions.Left && strip.Left >= brandArea.Right && captions.Right <= chrome.ClientSize.Width, "tabs never overlap brand or caption controls at width " + width);
                         Check(capButtons.All(b => b.Top == 0 && b.Bottom <= 36) && brandArea.Controls[0].Top == 0 && brandArea.Controls[0].Height <= 36, "window buttons and brand stay in the first tab row at width " + width);
-                        Check(toolbar.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Bottom <= toolbar.Height && c.Right <= toolbar.ClientSize.Width), "all command glyphs fit without a second toolbar row at width " + width);
+                        Check(toolbar.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Bottom <= toolbar.Height && c.Right <= toolbar.ClientSize.Width) &&
+                            toolbarRight.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Bottom <= toolbarRight.Height && c.Right <= toolbarRight.ClientSize.Width),
+                            "all command glyphs fit without a second toolbar row at width " + width);
+                        Check(toolbarRight.Left > toolbar.Left && toolbarRight.Right <= toolbarHost.ClientSize.Width,
+                            "dialog-opening commands keep their own right-aligned group at width " + width);
                     }
                     var tips = UiField<ToolTip>(form, "chromeTips");
-                    foreach (Button button in toolbar.Controls.OfType<Button>())
-                        Check(!string.IsNullOrEmpty(tips.GetToolTip(button)) && !string.IsNullOrEmpty(button.AccessibleName), "command tooltip/accessibility exists: " + button.Text);
                     var newButton = UiField<Button>(form, "newTab");
+                    var leftCommands = toolbar.Controls.OfType<Button>().Select(b => b.AccessibleName).ToArray();
+                    Check(leftCommands.Length >= 2 && leftCommands[0] == "加入已有窗口…" && leftCommands[1] == "分离窗口…",
+                        "join and detach window actions stay adjacent in the left group");
+                    Check(toolbarRight.Controls.OfType<Button>().Select(b => b.AccessibleName).SequenceEqual(new[] { "搜索标签…", "设置…" }),
+                        "search and settings remain the right-aligned dialog group");
+                    foreach (Button button in toolbar.Controls.OfType<Button>().Concat(toolbarRight.Controls.OfType<Button>()).Concat(new[] { newButton }))
+                        Check(!string.IsNullOrEmpty(tips.GetToolTip(button)) && !string.IsNullOrEmpty(button.AccessibleName), "command tooltip/accessibility exists: " + button.Text);
+                    Check(newButton.Parent is FlowLayoutPanel stripParent && stripParent == strip &&
+                        strip.Controls.Cast<Control>().Last() == newButton,
+                        "new-tab action flows directly after the last tab rather than in the toolbar");
                     var settings = new AppSettings(); settings.KeyBindings.Single(k => k.Command == HostCommand.NewTab).Chord = "Ctrl+Shift+T";
                     settings.KeyBindings.Single(k => k.Command == HostCommand.ReopenTab).Chord = "";
                     UiCall(form, "ApplySettings", settings);
@@ -70,7 +84,7 @@ namespace ExplorerTabs.Tests
                     Check(strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible && chrome.Height <= 56, "single-row overflow reserves only its real scrollbar height");
                     Check(content.Controls.Cast<Control>().All(c => !c.Visible), "welcome actions disappear when real Explorer tabs are present");
                     UiAnyCall(strip, "ConfigureLayout", true, 3); form.PerformLayout();
-                    Check(chrome.Height == strip.Height && chrome.Height <= 100 && toolbar.Top == chrome.Bottom, "wrap height updates enclosing chrome without overlapping toolbar");
+                    Check(chrome.Height == strip.Height && chrome.Height <= 100 && toolbarHost.Top == chrome.Bottom, "wrap height updates enclosing chrome without overlapping toolbar");
                     Check(capButtons.All(b => b.Top == 0) && brandArea.Controls[0].Height <= 36, "wrapped tabs do not vertically center window controls or brand");
                     Check(strip.VerticalScroll.Visible && !strip.HorizontalScroll.Visible, "wrapped browser chrome keeps vertical overflow");
                     Check(!api.Events.Any(e => e.StartsWith("restore")), "browser chrome layout never reparents or restores managed Explorer");
@@ -100,7 +114,7 @@ namespace ExplorerTabs.Tests
             using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore()))
             {
                 form.Width = 1100; UiCall(form, "RefreshTabs"); form.PerformLayout();
-                var strip = UiField<FlowLayoutPanel>(form, "tabs"); var buttons = strip.Controls.Cast<Control>().ToArray();
+                var strip = UiField<FlowLayoutPanel>(form, "tabs"); var buttons = TabControls(strip);
                 Check(buttons[0].Width == 110 && buttons[2].Width == 280, "adaptive titles clamp to 110 / 280 logical pixels at 96 DPI");
                 Check(buttons[1].Width > buttons[0].Width && buttons[1].Width < buttons[2].Width, "medium Chinese title uses its measured width instead of a fixed column");
                 Check(buttons.All(b => b.Width >= 110 && b.Width <= 280), "every single-row title respects width limits");
@@ -119,11 +133,11 @@ namespace ExplorerTabs.Tests
                 UiAnyCall(strip, "ConfigureLayout", false, 3); strip.PerformLayout();
                 Check(buttons.Select(b => b.Width).SequenceEqual(original), "wrap toggle preserves each measured title width");
                 host.RenameTab(host.Sessions[2], "短名"); UiCall(form, "RefreshTabs");
-                Check(strip.Controls[2].Width == 110, "renaming a long title immediately shrinks its tab");
+                Check(TabControls(strip)[2].Width == 110, "renaming a long title immediately shrinks its tab");
                 using (var large = new Font(form.Font.FontFamily, 13F))
                 {
-                    int before = strip.Controls[1].Width; strip.Font = large;
-                    Check(strip.Controls[1].Width > before && strip.Controls[1].Width <= 280, "font changes remeasure title widths within the same maximum");
+                    int before = TabControls(strip)[1].Width; strip.Font = large;
+                    Check(TabControls(strip)[1].Width > before && TabControls(strip)[1].Width <= 280, "font changes remeasure title widths within the same maximum");
                     strip.Font = form.Font;
                 }
                 Check(!api.Events.Any(e => e.StartsWith("restore")), "adaptive measurements and wrap never restore/reparent Explorer");

@@ -15,7 +15,7 @@ namespace ExplorerTabs.Core
         {
             if (title == null) throw new ArgumentNullException(nameof(title));
             string result = title.Trim();
-            if (result.Length == 0) throw new ArgumentException("标签名称不能为空，请用“恢复目录名称”取消自定义名称。");
+            if (result.Length == 0) throw new ArgumentException("标签名称不能为空，请用“恢复默认名称”取消自定义名称。");
             if (result.Length > MaximumTitleLength) throw new ArgumentException("标签名称最多 120 个字符。");
             if (result.Any(char.IsControl)) throw new ArgumentException("标签名称不能包含换行或控制字符。");
             return result;

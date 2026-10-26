@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace ExplorerTabs.App
 {
-    internal enum UiGlyph { NewTab, AddWindow, Search, Favorites, Session, Windows, Settings, Cancel, Minimize, Maximize, Restore, Close, Diagnostics, App }
+    internal enum UiGlyph { NewTab, AddWindow, DetachWindow, Search, Favorites, Session, Settings, Cancel, Minimize, Maximize, Restore, Close, Diagnostics, App }
     internal static class HostTheme
     {
         internal static readonly Color Canvas = Color.FromArgb(247, 249, 252);
@@ -36,13 +36,27 @@ namespace ExplorerTabs.App
                     case UiGlyph.Maximize: g.DrawRectangle(pen, 6, 6, 12, 12); break;
                     case UiGlyph.Restore: g.DrawRectangle(pen, 5, 9, 10, 10); g.DrawLines(pen, new[] { new Point(9, 7), new Point(9, 5), new Point(19, 5), new Point(19, 15), new Point(17, 15) }); break;
                     case UiGlyph.Search: g.DrawEllipse(pen, 4, 4, 12, 12); g.DrawLine(pen, 14, 14, 20, 20); break;
-                    case UiGlyph.Favorites: g.DrawPolygon(pen, new[] { new Point(12, 3), new Point(15, 9), new Point(21, 10), new Point(17, 15), new Point(18, 21), new Point(12, 18), new Point(6, 21), new Point(7, 15), new Point(3, 10), new Point(9, 9) }); break;
-                    case UiGlyph.Session: g.DrawRectangle(pen, 5, 8, 14, 12); g.DrawLine(pen, 7, 5, 17, 5); g.DrawLine(pen, 10, 2, 14, 2); g.DrawLine(pen, 8, 12, 16, 12); break;
-                    case UiGlyph.AddWindow: g.DrawRectangle(pen, 3, 5, 15, 14); g.DrawLine(pen, 3, 9, 18, 9); g.DrawLine(pen, 18, 13, 18, 21); g.DrawLine(pen, 14, 17, 22, 17); break;
-                    case UiGlyph.Windows: g.DrawRectangle(pen, 3, 3, 7, 7); g.DrawRectangle(pen, 14, 3, 7, 7); g.DrawRectangle(pen, 3, 14, 7, 7); g.DrawRectangle(pen, 14, 14, 7, 7); break;
+                    case UiGlyph.Favorites:
+                        // Bookmark ribbon: this button opens the saved-places list, it does not save immediately.
+                        g.DrawLines(pen, new[] { new Point(6, 3), new Point(18, 3), new Point(18, 21), new Point(12, 16), new Point(6, 21), new Point(6, 3) });
+                        g.DrawLine(pen, 9, 7, 15, 7); break;
+                    case UiGlyph.Session:
+                        // History clock (save / restore / reopen recent session).
+                        g.DrawArc(pen, 4, 4, 16, 16, 40, 300);
+                        g.DrawLines(pen, new[] { new Point(4, 8), new Point(4, 4), new Point(8, 4) });
+                        g.DrawLine(pen, 12, 8, 12, 12.5F); g.DrawLine(pen, 12, 12.5F, 15, 14); break;
+                    case UiGlyph.AddWindow:
+                        // A window with an arrow entering it: join an existing Explorer.
+                        g.DrawRectangle(pen, 3, 5, 12, 14);
+                        g.DrawLine(pen, 13, 12, 21, 12);
+                        g.DrawLines(pen, new[] { new Point(18, 9), new Point(21, 12), new Point(18, 15) }); break;
+                    case UiGlyph.DetachWindow:
+                        // A window with an arrow leaving it: separate back into a standalone Explorer.
+                        g.DrawRectangle(pen, 3, 8, 13, 13);
+                        g.DrawLine(pen, 11, 13, 21, 3);
+                        g.DrawLines(pen, new[] { new Point(15, 3), new Point(21, 3), new Point(21, 9) }); break;
                     case UiGlyph.Settings:
-                        g.DrawEllipse(pen, 7, 7, 10, 10); g.DrawEllipse(pen, 10, 10, 4, 4);
-                        for (int i = 0; i < 8; i++) { double a = i * Math.PI / 4; g.DrawLine(pen, 12 + (float)Math.Cos(a) * 7, 12 + (float)Math.Sin(a) * 7, 12 + (float)Math.Cos(a) * 9, 12 + (float)Math.Sin(a) * 9); } break;
+                        DrawGear(g, brush); break;
                     case UiGlyph.Diagnostics: g.DrawLines(pen, new[] { new Point(3, 12), new Point(7, 12), new Point(10, 5), new Point(14, 19), new Point(17, 12), new Point(21, 12) }); break;
                     case UiGlyph.App:
                         using (var bg = new SolidBrush(Accent)) using (var r = Round(new RectangleF(1, 1, 22, 22), 5)) g.FillPath(bg, r);
@@ -55,6 +69,28 @@ namespace ExplorerTabs.App
             }
             g.Restore(state);
         }
+        private static void DrawGear(Graphics g, Brush brush)
+        {
+            // Solid gear with a center hole reads as settings; the old thin radial spokes looked like a sun.
+            const int teeth = 8;
+            var points = new PointF[teeth * 4];
+            for (int i = 0; i < teeth; i++)
+            {
+                double a = i * Math.PI * 2 / teeth;
+                points[i * 4] = Polar(a - 0.21, 7.1F);
+                points[i * 4 + 1] = Polar(a - 0.12, 10.2F);
+                points[i * 4 + 2] = Polar(a + 0.12, 10.2F);
+                points[i * 4 + 3] = Polar(a + 0.21, 7.1F);
+            }
+            using (var path = new GraphicsPath(FillMode.Alternate))
+            {
+                path.AddPolygon(points);
+                path.AddEllipse(9.1F, 9.1F, 5.8F, 5.8F);
+                g.FillPath(brush, path);
+            }
+        }
+        private static PointF Polar(double angle, float radius) =>
+            new PointF(12 + (float)Math.Cos(angle) * radius, 12 + (float)Math.Sin(angle) * radius);
     }
     internal sealed class IconButton : Button
     {
@@ -146,6 +182,71 @@ namespace ExplorerTabs.App
         public override Color ImageMarginGradientEnd => ToolStripDropDownBackground;
         public override Color SeparatorDark => Color.FromArgb(225, 231, 240);
         public override Color SeparatorLight => Color.Transparent;
+    }
+    /// <summary>Borderless dialog base: own rounded chrome plus the native drop shadow.</summary>
+    internal class ShellDialog : Form
+    {
+        protected override CreateParams CreateParams
+        {
+            get { var cp = base.CreateParams; cp.ClassStyle |= 0x00020000; return cp; } // CS_DROPSHADOW
+        }
+    }
+    internal sealed class DialogTitleBar : Panel
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ReleaseCapture();
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam);
+        public DialogTitleBar(Form form)
+        {
+            Dock = DockStyle.Top; Height = 38; BackColor = Color.White; TabStop = false;
+            var title = new Label
+            {
+                Text = form.Text, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(14, 0, 0, 0), ForeColor = HostTheme.Text, BackColor = Color.White,
+                Font = new Font(form.Font.FontFamily, 10F), UseMnemonic = false
+            };
+            var close = new IconButton(UiGlyph.Close, "关闭") { Caption = true, Dock = DockStyle.Right, Width = 44, Height = 38, Margin = Padding.Empty };
+            close.Click += (_, __) => form.Close();
+            Controls.Add(title); Controls.Add(close);
+            title.MouseDown += Drag; MouseDown += Drag;
+            Paint += (_, e) =>
+            {
+                using (var pen = new Pen(Color.FromArgb(226, 232, 240)))
+                    e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+            };
+        }
+        private void Drag(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            var form = FindForm(); if (form == null) return;
+            ReleaseCapture(); SendMessage(form.Handle, 0xA1, new IntPtr(2), IntPtr.Zero); // WM_NCLBUTTONDOWN / HTCAPTION
+        }
+    }
+    internal static class DialogStyle
+    {
+        private const int CornerRadius = 12;
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, bool redraw);
+
+        /// <summary>Replaces the native thick dialog frame with borderless rounded chrome and no inherited icon.</summary>
+        public static void Apply(Form form)
+        {
+            form.FormBorderStyle = FormBorderStyle.None;
+            form.ShowIcon = false;
+            form.Icon = null;
+            form.Controls.Add(new DialogTitleBar(form));
+            form.HandleCreated += (_, __) => Round(form);
+            form.Shown += (_, __) => Round(form);
+            form.SizeChanged += (_, __) => { if (form.IsHandleCreated) Round(form); };
+        }
+        private static void Round(Form form)
+        {
+            if (!form.IsHandleCreated || form.WindowState == FormWindowState.Minimized || form.Width <= 0 || form.Height <= 0) return;
+            int radius = Math.Max(4, (int)Math.Round(CornerRadius * form.DeviceDpi / 96F));
+            IntPtr region = CreateRoundRectRgn(0, 0, form.Width + 1, form.Height + 1, radius * 2, radius * 2);
+            if (region == IntPtr.Zero) return;
+            if (SetWindowRgn(form.Handle, region, true) == 0) DeleteObject(region);
+        }
     }
     internal sealed class ToolbarDivider : Control
     {

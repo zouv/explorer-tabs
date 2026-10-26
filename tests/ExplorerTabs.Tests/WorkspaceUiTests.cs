@@ -160,7 +160,7 @@ namespace ExplorerTabs.Tests
                 Check(menu.IsDisposed && UiField<int>(form, "modalDepth") == 0 && UiField<Dictionary<ContextMenuStrip, Action>>(form, "managedMenuCleanups").Count == 0, "host Dispose cleans open/pending menus even if posted callback never runs: " + closeFirst);
                 Check(!ran && api.Events.Count == beforeDispose, "Dispose skips pending menu commands and never re-shows fake Explorer: " + closeFirst);
             }
-            foreach (var command in new[] { "向右移动", "恢复目录名称", "分离为独立 Explorer（不关闭）" })
+            foreach (var command in new[] { "恢复默认名称", "分离为独立窗口" })
             {
                 var host = new HostController(new FakeWindows(), new FakeStore()); var first = Add(host, 1); Add(host, 2); host.RenameTab(first, "Alias");
                 using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore()))
@@ -172,7 +172,7 @@ namespace ExplorerTabs.Tests
                     UiAnyCall(menu, "OnClosed", new ToolStripDropDownClosedEventArgs(ToolStripDropDownCloseReason.ItemClicked));
                     Check(menu.Handle != IntPtr.Zero && !menu.IsDisposed, "tab menu handle survives Closed before queued mutation: " + command);
                     Application.DoEvents();
-                    bool result = command == "向右移动" ? host.Sessions[1] == first : command == "恢复目录名称" ? first.CustomTitle == null : !host.Sessions.Contains(first);
+                    bool result = command == "恢复默认名称" ? first.CustomTitle == null : !host.Sessions.Contains(first);
                     Check(result && menu.IsDisposed && UiField<int>(form, "modalDepth") == 0, "queued tab mutation completes and safely replaces old menu: " + command);
                 }
             }
@@ -207,25 +207,26 @@ namespace ExplorerTabs.Tests
             using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore(), new AppSettings { WrapTabs = true, MaximumTabRows = 3 }))
             {
                 form.Width = 720; UiCall(form, "RefreshTabs"); form.PerformLayout(); var tabs = UiField<FlowLayoutPanel>(form, "tabs"); tabs.PerformLayout();
-                var controls = tabs.Controls.Cast<Control>().ToArray();
+                var controls = TabControls(tabs);
                 Check(tabs.WrapContents && tabs.Height <= tabs.Padding.Vertical + 3 * 38 && controls.Select(c => c.Top).Distinct().Count() > 3, "100 wrapped tabs cap visible rows while retaining all rows");
                 Check(tabs.VerticalScroll.Visible && !tabs.HorizontalScroll.Visible, "wrapped overflow uses vertical scrolling only");
                 Check(controls.All(c => c.Left >= 0 && c.Right <= tabs.ClientSize.Width), "all wrapped buttons fit client width including scrollbar");
                 UiAnyCall(tabs, "Reveal", host.Sessions.Last()); Check(controls.Last().Bottom <= tabs.ClientSize.Height && tabs.AutoScrollPosition.Y < 0, "last wrapped tab reveals within capped viewport");
                 int offset = tabs.AutoScrollPosition.Y; UiCall(form, "RefreshTabs"); Check(tabs.AutoScrollPosition.Y == offset, "wrapped metadata redraw preserves vertical viewport");
-                tabs.AutoScrollPosition = Point.Empty; tabs.PerformLayout(); controls = tabs.Controls.Cast<Control>().ToArray(); var source = controls[0]; var target = controls[5];
+                tabs.AutoScrollPosition = Point.Empty; tabs.PerformLayout(); controls = TabControls(tabs); var source = controls[0]; var target = controls[5];
                 UiCall(tabs, "BeginPointer", source, MouseButtons.Left, new Point(source.Left + 10, source.Top + 10)); UiCall(tabs, "MovePointer", source, new Point(target.Right - 2, target.Top + 15));
                 var move = UiCall(tabs, "EndPointer", source, MouseButtons.Left, new Point(target.Right - 2, target.Top + 15))!;
                 Check((int)move.GetType().GetProperty("Index")!.GetValue(move)! == 5 && host.Sessions[0].Identity.Handle == 1, "cross-row drag computes visual insertion without native mutations before drop dispatch");
                 UiCall(tabs, "PublishMove", move); Check(host.Sessions[5].Identity.Handle == 1, "cross-row drop reaches host reorder");
                 form.Width = 1100; form.PerformLayout(); tabs.PerformLayout(); Check(tabs.Height <= tabs.Padding.Vertical + 3 * 38 && !tabs.HorizontalScroll.Visible, "width change recalculates multirow layout without horizontal overflow");
-                UiAnyCall(tabs, "ConfigureLayout", false, 3); tabs.PerformLayout(); Check(!tabs.WrapContents && tabs.Controls.Cast<Control>().All(c => c.Width >= 110 && c.Width <= 280) && tabs.HorizontalScroll.Visible, "disabling wrap retains adaptive widths and horizontal overflow");
+                UiAnyCall(tabs, "ConfigureLayout", false, 3); tabs.PerformLayout(); Check(!tabs.WrapContents && TabControls(tabs).All(c => c.Width >= 110 && c.Width <= 280) && tabs.HorizontalScroll.Visible, "disabling wrap retains adaptive widths and horizontal overflow");
                 Check(!api.Events.Any(e => e.StartsWith("restore")), "multirow layout and reorder never detach Explorer");
             }
             var settingsType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.SettingsDialog", true)!;
             using (var dialog = (Form)Activator.CreateInstance(settingsType, new AppSettings(), false, true)!)
             {
-                MakeHidden(dialog); Check(!UiField<CheckBox>(dialog, "wrap").Checked && !UiField<NumericUpDown>(dialog, "maximumRows").Enabled, "settings expose wrap off by default with row limit disabled");
+                MakeHidden(dialog); Check(!dialog.ShowIcon && HasWindowRegion(dialog), "settings dialog removes the inherited title-bar icon and applies a small rounded region");
+                Check(!UiField<CheckBox>(dialog, "wrap").Checked && !UiField<NumericUpDown>(dialog, "maximumRows").Enabled, "settings expose wrap off by default with row limit disabled");
                 UiField<CheckBox>(dialog, "wrap").Checked = true; UiField<NumericUpDown>(dialog, "maximumRows").Value = 5;
                 var grid = UiField<DataGridView>(dialog, "bindings"); grid.Rows[1].Cells[1].Value = grid.Rows[0].Cells[1].Value; ((Button)dialog.AcceptButton!).PerformClick();
                 Check(dialog.DialogResult == DialogResult.None && UiField<Label>(dialog, "error").Text.Length > 0, "duplicate binding shows inline validation and keeps settings open");
@@ -234,7 +235,8 @@ namespace ExplorerTabs.Tests
             }
             using (var picker = CreatePicker())
             {
-                MakeHidden(picker); var query = UiField<TextBox>(picker, "query"); var results = UiField<ListBox>(picker, "results");
+                MakeHidden(picker); Check(!picker.ShowIcon && HasWindowRegion(picker), "picker dialog removes the inherited title-bar icon and applies a small rounded region");
+                var query = UiField<TextBox>(picker, "query"); var results = UiField<ListBox>(picker, "results");
                 query.Text = "项目 assets"; Check(results.Items.Count == 1 && picker.GetType().GetProperty("SelectedValue")!.GetValue(picker)!.Equals(2), "picker filters across title and path and retains exact session value");
                 query.Text = "no match"; UiCall(picker, "AcceptSelection"); Check(results.Items.Count == 0 && picker.DialogResult == DialogResult.None, "no-match picker cannot activate a stale selection");
                 query.Text = ""; UiCall(picker, "QueryKey", null, new KeyEventArgs(Keys.Down)); Check(results.SelectedIndex == 1, "picker arrow key selects next result");

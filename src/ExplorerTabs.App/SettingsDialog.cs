@@ -5,7 +5,7 @@ using System.Windows.Forms;
 using ExplorerTabs.Core;
 namespace ExplorerTabs.App
 {
-    internal sealed class SettingsDialog : Form
+    internal sealed class SettingsDialog : ShellDialog
     {
         private readonly ComboBox mode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         private readonly CheckBox shortcuts = new CheckBox { Text = "启用宿主快捷键（仅当前宿主 / 标签前台生效）", AutoSize = true };
@@ -13,7 +13,7 @@ namespace ExplorerTabs.App
         private readonly NumericUpDown maximumRows = new NumericUpDown { Minimum = 2, Maximum = 8, Width = 80 };
         private readonly CheckBox remember = new CheckBox { Text = "自动保存会话，启动时提供恢复入口（不自动重开窗口）", AutoSize = true };
         private readonly TextBox directory = new TextBox { Dock = DockStyle.Fill, MaxLength = 4096 };
-        private readonly Label error = new Label { Dock = DockStyle.Fill, ForeColor = Color.Firebrick };
+        private readonly Label error = new Label { Dock = DockStyle.Fill, ForeColor = Color.Firebrick, BackColor = Color.White };
         private readonly DataGridView bindings = new DataGridView { Dock = DockStyle.Fill, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
             RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, BackgroundColor = Color.White, BorderStyle = BorderStyle.None,
             SelectionMode = DataGridViewSelectionMode.CellSelect, MultiSelect = false };
@@ -22,19 +22,19 @@ namespace ExplorerTabs.App
         public SettingsDialog(AppSettings current, bool hasTabs, bool persistent)
         {
             original = current.Copy(); Result = current.Copy(); Text = "设置 · ExplorerTabs"; Font = new Font("Microsoft YaHei UI", 9F);
-            FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent;
-            MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false; ClientSize = new Size(660, 620); BackColor = Color.White;
+            StartPosition = FormStartPosition.CenterParent;
+            MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false; ClientSize = new Size(680, 668); BackColor = Color.White;
             mode.Items.AddRange(new object[] { "嵌入窗口（实验性）", "顶层窗口分组（兼容）" });
             mode.SelectedIndex = current.Mode == HostingMode.Embedded ? 0 : 1; mode.Enabled = !hasTabs;
             shortcuts.Checked = current.ShortcutsEnabled; directory.Text = current.NewTabDirectory;
             wrap.Checked = current.WrapTabs; maximumRows.Value = current.MaximumTabRows; maximumRows.Enabled = wrap.Checked; wrap.CheckedChanged += (_, __) => maximumRows.Enabled = wrap.Checked;
             remember.Checked = current.RememberSession;
-            var pages = new TabControl { Dock = DockStyle.Fill }; var general = new TabPage("常规 / 标签栏") { Padding = new Padding(12), BackColor = Color.White }; var keys = new TabPage("快捷键") { Padding = new Padding(12), BackColor = Color.White };
+            var pages = new TabControl { Dock = DockStyle.Fill }; var general = new TabPage("常规 / 标签栏") { Padding = new Padding(14, 12, 14, 12), BackColor = Color.White }; var keys = new TabPage("快捷键") { Padding = new Padding(14, 12, 14, 12), BackColor = Color.White };
             pages.TabPages.Add(general); pages.TabPages.Add(keys);
-            var layout = new TableLayoutPanel { Dock = DockStyle.Top, Height = 440, ColumnCount = 2, RowCount = 9 };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 115)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            foreach (int h in new[] { 70, 42, 38, 38, 42, 54, 44, 80, 30 }) layout.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
-            var note = new Label { Dock = DockStyle.Fill, ForeColor = Color.FromArgb(91, 104, 123), Text =
+            var layout = new TableLayoutPanel { Dock = DockStyle.Top, Height = 448, ColumnCount = 2, RowCount = 9, BackColor = Color.White };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            foreach (int h in new[] { 78, 42, 38, 38, 42, 54, 44, 80, 30 }) layout.RowStyles.Add(new RowStyle(SizeType.Absolute, h));
+            var note = new Label { Dock = DockStyle.Fill, ForeColor = Color.FromArgb(82, 96, 116), BackColor = Color.FromArgb(244, 248, 253), Padding = new Padding(10, 8, 10, 8), Text =
                 (persistent ? "设置保存在本机，正常退出时记住窗口布局。" : "设置存储不可用，本次修改只在当前运行生效。") + "\n" +
                 (hasTabs ? "挂载模式需先分离全部标签才能更改。" : "不会自动捕获窗口。会话恢复需您主动触发。") };
             layout.Controls.Add(note, 0, 0); layout.SetColumnSpan(note, 2);
@@ -44,7 +44,7 @@ namespace ExplorerTabs.App
             layout.Controls.Add(new Label { Text = "最多可见行数", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 4); layout.Controls.Add(maximumRows, 1, 4);
             layout.Controls.Add(remember, 0, 5); layout.SetColumnSpan(remember, 2);
             layout.Controls.Add(new Label { Text = "新建标签目录", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 6);
-            var pathRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 }; pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+            var pathRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Color.White }; pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); pathRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
             var browse = new ActionButton("浏览…") { Dock = DockStyle.Fill };
             browse.Click += (_, __) => { using (var picker = new FolderBrowserDialog { Description = "选择新建标签默认目录", ShowNewFolderButton = false }) if (picker.ShowDialog(this) == DialogResult.OK) directory.Text = picker.SelectedPath; };
             pathRow.Controls.Add(directory, 0, 0); pathRow.Controls.Add(browse, 1, 0); layout.Controls.Add(pathRow, 1, 6);
@@ -58,10 +58,10 @@ namespace ExplorerTabs.App
             var keyNote = new Label { Dock = DockStyle.Top, Height = 70, Text = "点击右侧组合可修改；空白表示禁用。重复组合不能保存。\nCtrl+P 列出标签，Ctrl+Shift+P 打开命令面板。\n默认保留 Explorer 的 F2 文件重命名；Ctrl+Shift+R 重命名标签。", ForeColor = Color.FromArgb(91, 104, 123) };
             var reset = new ActionButton("恢复默认快捷键") { Dock = DockStyle.Bottom, Height = 32 }; reset.Click += (_, __) => Fill(HostShortcutCatalog.Defaults());
             keys.Controls.Add(bindings); keys.Controls.Add(keyNote); keys.Controls.Add(reset);
-            var outer = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 3 };
+            var outer = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(14, 12, 14, 10), ColumnCount = 1, RowCount = 3, BackColor = Color.White };
             outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
             outer.Controls.Add(pages, 0, 0); outer.Controls.Add(error, 0, 1);
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
+            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, BackColor = Color.White };
             var cancel = new ActionButton("取消") { DialogResult = DialogResult.Cancel, Width = 90, Height = 30 }; var save = new ActionButton("保存", true) { Width = 90, Height = 30 };
             save.Click += (_, __) =>
             {
@@ -76,6 +76,7 @@ namespace ExplorerTabs.App
                 catch (Exception issue) when (issue is ArgumentException || issue is System.IO.InvalidDataException) { error.Text = issue.Message; }
             };
             buttons.Controls.Add(cancel); buttons.Controls.Add(save); outer.Controls.Add(buttons, 0, 2); Controls.Add(outer); AcceptButton = save; CancelButton = cancel;
+            DialogStyle.Apply(this);
         }
     }
 }

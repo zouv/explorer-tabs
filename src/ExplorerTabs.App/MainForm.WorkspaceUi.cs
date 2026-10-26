@@ -14,6 +14,7 @@ namespace ExplorerTabs.App
         private readonly HashSet<ContextMenuStrip> closedManagedMenus = new HashSet<ContextMenuStrip>();
         private bool disposingUi;
         private FlowLayoutPanel? commandToolbar;
+        private FlowLayoutPanel? commandToolbarRight;
         private IWorkspaceLibraryStore? libraryStore;
         private WorkspaceLibrary library = new WorkspaceLibrary();
         private readonly Dictionary<WindowSession, string> directoryCache = new Dictionary<WindowSession, string>();
@@ -27,14 +28,16 @@ namespace ExplorerTabs.App
         private IExplorerDirectoryService? DirectoryReader => explorerTabs as IExplorerDirectoryService;
         public void ConfigureLibrary(IWorkspaceLibraryStore? store, WorkspaceLibrary value)
         { WorkspaceLibrary.Validate(value); libraryStore = store; library = value.Copy(); ShowSessionOffer(); }
-        private void InitializeWorkspaceUi(FlowLayoutPanel toolbar)
+        private void InitializeWorkspaceUi(FlowLayoutPanel toolbar, FlowLayoutPanel toolbarRight)
         {
             commandToolbar = toolbar;
+            commandToolbarRight = toolbarRight;
             toolbar.BackColor = HostTheme.Canvas;
-            var search = new IconButton(UiGlyph.Search, "标签列表…");
-            var favorites = new IconButton(UiGlyph.Favorites, "常用 / 标签组");
-            var session = new IconButton(UiGlyph.Session, "会话");
-            var windows = new IconButton(UiGlyph.Windows, "窗口管理");
+            toolbarRight.BackColor = HostTheme.Canvas;
+            var search = new IconButton(UiGlyph.Search, "搜索标签…");
+            var favorites = new IconButton(UiGlyph.Favorites, "常用与标签组…");
+            var session = new IconButton(UiGlyph.Session, "会话与恢复…");
+            var windows = new IconButton(UiGlyph.DetachWindow, "分离窗口…");
             search.Click += (_, __) => QueueUi(ShowTabPickerAsync); favorites.Click += (_, __) => ShowLibraryMenu(favorites); session.Click += (_, __) => ShowSessionMenu(session);
             windows.Click += (_, __) =>
             {
@@ -45,15 +48,17 @@ namespace ExplorerTabs.App
                 menu.Items.Add("分离全部（不关闭）", null, (_, __) => QueueMenuAction(() => DetachAll(false))); menu.Items.Add(new ToolStripSeparator());
                 menu.Items.Add("恢复窗口并退出宿主", null, (_, __) => QueueUi(() => { Close(); return Task.CompletedTask; })); ShowManagedMenu(menu, windows);
             };
-            toolbar.Paint += (_, e) =>
-            {
-                using (var pen = new Pen(Color.FromArgb(215, 222, 231)))
-                    e.Graphics.DrawLine(pen, 0, toolbar.ClientSize.Height - 1, toolbar.ClientSize.Width, toolbar.ClientSize.Height - 1);
-            };
+            toolbar.Paint += PaintToolbarDivider;
+            toolbarRight.Paint += PaintToolbarDivider;
+            if (toolbar.Parent != null) toolbar.Parent.Paint += PaintToolbarDivider;
             toolbar.Controls.Clear();
-            toolbar.Controls.AddRange(new Control[] { newTab, addWindows, new ToolbarDivider(), search, favorites, session, new ToolbarDivider(), windows, preferences, cancelCreation });
+            toolbarRight.Controls.Clear();
+            toolbar.Controls.AddRange(new Control[] { addWindows, windows, new ToolbarDivider(), favorites, session, cancelCreation });
+            // Search and settings open dialogs instead of menus; keep them visually separate on the right.
+            toolbarRight.Controls.AddRange(new Control[] { search, preferences });
             newTab.Tag = HostCommand.NewTab; search.Tag = HostCommand.SearchTabs; preferences.Tag = HostCommand.Settings;
-            foreach (IconButton button in toolbar.Controls.OfType<IconButton>()) button.BackColor = HostTheme.Canvas;
+            foreach (IconButton button in CommandButtons()) button.BackColor = HostTheme.Canvas;
+            tabs.SetTrailingControl(newTab);
             UpdateToolbarHints();
             var restore = new ActionButton("恢复上次会话", true) { Width = 128, Height = 30 }; var dismiss = new ActionButton("暂不恢复") { Width = 88, Height = 30 };
             restore.Click += (_, __) => { if (library.LastSession != null) QueueUi(() => OpenWorkspaceAsync(library.LastSession.Copy())); }; dismiss.Click += (_, __) => sessionOffer.Visible = false;
@@ -61,16 +66,31 @@ namespace ExplorerTabs.App
             Controls.Add(sessionOffer); Controls.SetChildIndex(sessionOffer, Controls.GetChildIndex(chrome!) - 1);
             tabs.ConfigureLayout(settings.WrapTabs, settings.MaximumTabRows);
         }
+        private void PaintToolbarDivider(object? sender, PaintEventArgs e)
+        {
+            var control = (Control)sender!;
+            using (var pen = new Pen(Color.FromArgb(215, 222, 231)))
+                e.Graphics.DrawLine(pen, 0, control.ClientSize.Height - 1, control.ClientSize.Width, control.ClientSize.Height - 1);
+        }
+        private IEnumerable<IconButton> CommandButtons()
+        {
+            if (commandToolbar != null) foreach (IconButton button in commandToolbar.Controls.OfType<IconButton>()) yield return button;
+            if (commandToolbarRight != null) foreach (IconButton button in commandToolbarRight.Controls.OfType<IconButton>()) yield return button;
+            yield return newTab;
+        }
         private void UpdateToolbarHints()
         {
-            if (commandToolbar == null) return;
-            foreach (IconButton button in commandToolbar.Controls.OfType<IconButton>())
+            foreach (IconButton button in CommandButtons())
             {
-                var chord = button.Tag is HostCommand command && settings.ShortcutsEnabled ? settings.KeyBindings.FirstOrDefault(k => k.Command == command)?.Chord : null;
+                var chord = button.Tag is HostCommand command ? ShortcutChord(command) : null;
                 string hint = button.Text + (string.IsNullOrEmpty(chord) ? "" : " · " + chord);
                 chromeTips.SetToolTip(button, hint); button.AccessibleDescription = hint;
             }
         }
+        private string ShortcutChord(HostCommand command) =>
+            settings.ShortcutsEnabled ? settings.KeyBindings.FirstOrDefault(k => k.Command == command)?.Chord ?? "" : "";
+        private static void ShowShortcut(ToolStripItem item, string chord)
+        { if (!string.IsNullOrEmpty(chord) && item is ToolStripMenuItem menuItem) menuItem.ShortcutKeyDisplayString = chord; }
         private void ShowSessionOffer() => sessionOffer.Visible = settings.RememberSession && library.LastSession != null && controller.Sessions.Count == 0;
         private void ShowManagedMenu(ContextMenuStrip menu, Control anchor)
         {

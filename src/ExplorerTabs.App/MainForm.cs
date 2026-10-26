@@ -32,7 +32,7 @@ namespace ExplorerTabs.App
         private readonly IAppSettingsStore? settingsStore;
         private readonly IExplorerTabService explorerTabs;
         private CancellationTokenSource? creation;
-        private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入窗口…");
+        private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入已有窗口…");
         private readonly IconButton preferences = new IconButton(UiGlyph.Settings, "设置…");
         private readonly IconButton newTab = new IconButton(UiGlyph.NewTab, "新建标签") { Primary = true };
         private readonly IconButton cancelCreation = new IconButton(UiGlyph.Cancel, "取消操作") { Visible = false };
@@ -51,7 +51,12 @@ namespace ExplorerTabs.App
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(1100, 800);
             MinimumSize = new Size(720, 500);
-            var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 36, AutoSize = false, Padding = new Padding(8, 2, 8, 2), WrapContents = false };
+            // Left group: actions that open menus. Right group: commands that open dialogs.
+            var toolbarHost = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = HostTheme.Canvas };
+            var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, Height = 36, AutoSize = false, Padding = new Padding(8, 2, 8, 2), WrapContents = false };
+            var toolbarRight = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 82, Height = 36, AutoSize = false, Padding = new Padding(0, 2, 8, 2), WrapContents = false, FlowDirection = FlowDirection.LeftToRight };
+            toolbarHost.Controls.Add(toolbar);
+            toolbarHost.Controls.Add(toolbarRight);
             var add = addWindows;
             mode.DropDownStyle = ComboBoxStyle.DropDownList;
             mode.Width = 200;
@@ -66,7 +71,7 @@ namespace ExplorerTabs.App
             preferences.Click += (_, __) => ShowSettings();
             tabs.Padding = new Padding(2, 2, 2, 0);
             tabs.Selected += SelectTab;
-            tabs.MiddleDetach += Detach;
+            tabs.MiddleClose += session => QueueUi(() => CloseTabAsync(session));
             tabs.MoveRequested += MoveTab;
             tabs.InteractionChanged += _ => SyncShortcutScope();
             content.Dock = DockStyle.Fill;
@@ -78,7 +83,7 @@ namespace ExplorerTabs.App
             diagnostic.Click += (_, __) => ExportDiagnostics();
             status.Dock = DockStyle.Fill; status.AutoEllipsis = true; status.Padding = new Padding(10, 2, 0, 0); status.ForeColor = Color.FromArgb(100, 113, 133);
             footer.Controls.Add(status); footer.Controls.Add(diagnostic);
-            Controls.Add(content); Controls.Add(toolbar); Controls.Add(footer);
+            Controls.Add(content); Controls.Add(toolbarHost); Controls.Add(footer);
             InitializeChrome();
             content.Resize += (_, __) => LayoutCurrent();
             LocationChanged += (_, __) => LayoutCurrent();
@@ -128,7 +133,7 @@ namespace ExplorerTabs.App
                 Bounds = SettingsLayoutPolicy.Restore(settings.Bounds, Screen.AllScreens.Select(s => s.WorkingArea).ToArray(), Bounds);
             }
             if (settings.Maximized) WindowState = FormWindowState.Maximized;
-            InitializeWorkspaceUi(toolbar);
+            InitializeWorkspaceUi(toolbar, toolbarRight);
             UpdateStatus();
         }
 
@@ -418,29 +423,28 @@ namespace ExplorerTabs.App
             var menu = new ContextMenuStrip();
             HostTheme.StyleMenu(menu);
             int index = controller.Sessions.ToList().IndexOf(session);
-            var close = menu.Items.Add("关闭此标签的 Explorer", null, (_, __) => QueueUi(() => CloseTabAsync(session)));
+            var close = menu.Items.Add("关闭 Explorer", null, (_, __) => QueueUi(() => CloseTabAsync(session)));
             close.Enabled = session.State == SessionState.Attached && session.CloseRequestedUtc == null && workspaceOperation == null;
             close.ForeColor = Color.FromArgb(166, 49, 49);
+            ShowShortcut(close, ShortcutChord(HostCommand.CloseTab));
             menu.Items.Add(new ToolStripSeparator());
-            var duplicate = menu.Items.Add("复制此标签的目录…", null, (_, __) => QueueCreateFromMenu(session));
+            var duplicate = menu.Items.Add("复制此标签", null, (_, __) => QueueCreateFromMenu(session));
             duplicate.Enabled = creation == null && !explorerTabs.IsBusy && session.State == SessionState.Attached;
+            ShowShortcut(duplicate, ShortcutChord(HostCommand.DuplicateTab));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("收藏此目录…", null, (_, __) => QueueUi(() => AddFavoriteAsync(session)));
-            menu.Items.Add("重命名标签…", null, (_, __) => QueueMenuAction(() => RenameTab(session)));
-            var reset = menu.Items.Add("恢复目录名称", null, (_, __) =>
+            var rename = menu.Items.Add("重命名标签…", null, (_, __) => QueueMenuAction(() => RenameTab(session)));
+            ShowShortcut(rename, ShortcutChord(HostCommand.RenameTab));
+            var reset = menu.Items.Add("恢复默认名称", null, (_, __) =>
                 QueueMenuAction(() => RunSafely("恢复标签名称失败", () => { controller.ResetTabTitle(session); workspaceTouched = true; RefreshTabs(); })));
             reset.Enabled = session.CustomTitle != null;
             menu.Items.Add(new ToolStripSeparator());
-            var left = menu.Items.Add("向左移动", null, (_, __) => QueueMenuAction(() => MoveTab(session, controller.Sessions.ToList().IndexOf(session) - 1)));
-            var right = menu.Items.Add("向右移动", null, (_, __) => QueueMenuAction(() => MoveTab(session, controller.Sessions.ToList().IndexOf(session) + 1)));
-            left.Enabled = index > 0; right.Enabled = index >= 0 && index < controller.Sessions.Count - 1;
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("分离为独立 Explorer（不关闭）", null, (_, __) => QueueMenuAction(() => Detach(session)));
-            var others = menu.Items.Add("分离其他标签（不关闭）", null, (_, __) => QueueMenuAction(() => DetachTabs(session, TabDetachScope.Others)));
-            var toRight = menu.Items.Add("分离右侧标签（不关闭）", null, (_, __) => QueueMenuAction(() => DetachTabs(session, TabDetachScope.ToRight)));
+            menu.Items.Add("分离为独立窗口", null, (_, __) => QueueMenuAction(() => Detach(session)));
+            var others = menu.Items.Add("分离其他标签", null, (_, __) => QueueMenuAction(() => DetachTabs(session, TabDetachScope.Others)));
+            var toRight = menu.Items.Add("分离右侧标签", null, (_, __) => QueueMenuAction(() => DetachTabs(session, TabDetachScope.ToRight)));
             others.Enabled = controller.Sessions.Count > 1;
             toRight.Enabled = index >= 0 && index < controller.Sessions.Count - 1;
-            menu.Items.Add("分离全部标签（不关闭）", null, (_, __) => QueueMenuAction(() => DetachAll(false)));
+            menu.Items.Add("分离全部标签", null, (_, __) => QueueMenuAction(() => DetachAll(false)));
             IDisposable? interaction = null;
             menu.Opening += (_, e) =>
             {

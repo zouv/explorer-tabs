@@ -502,6 +502,9 @@ namespace ExplorerTabs.Tests
             }
         }
 
+        private static Control[] TabControls(FlowLayoutPanel strip) =>
+            strip.Controls.Cast<Control>().Where(c => c.GetType().GetProperty("Session") != null).ToArray();
+
         private static void TabUiSmoke()
         {
             Console.WriteLine("Tab UI smoke creates only hidden managed controls with fake window APIs. No Show, global capture, hooks or Explorer manipulation.");
@@ -519,8 +522,9 @@ namespace ExplorerTabs.Tests
                 object? Call(string method, params object[] arguments) => stripType.GetMethod(method,
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(strip, arguments);
                 void Refresh() => type.GetMethod("RefreshTabs", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, null);
-                Button ButtonFor(WindowSession session) => strip.Controls.Cast<Button>().Single(b =>
+                Button ButtonFor(WindowSession session) => TabControls(strip).Cast<Button>().Single(b =>
                     (WindowSession)b.GetType().GetProperty("Session")!.GetValue(b)! == session);
+                int TabCount() => TabControls(strip).Length;
                 bool Interacting() => (bool)stripType.GetProperty("IsInteracting")!.GetValue(strip)!;
                 Refresh(); form.Width = 720;
                 typeof(Control).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, new object[] { 2, true });
@@ -549,16 +553,22 @@ namespace ExplorerTabs.Tests
                 host.Activate(second, Bounds); Refresh(); strip.AutoScrollPosition = Point.Empty;
                 api.Events.Clear(); int writes = store.Writes;
                 var button = ButtonFor(first);
-                Check(strip.Controls.Count == 4 && button.Text == first.DisplayTitle && button.AccessibleName == first.DisplayTitle,
+                Check(TabCount() == 4 && button.Text == first.DisplayTitle && button.AccessibleName == first.DisplayTitle,
                     "actual tab controls display custom aliases and accessible names");
+                Check(strip.Controls.Cast<Control>().Last().AccessibleName == "新建标签" &&
+                    TabControls(strip).All(c => strip.Controls.GetChildIndex(c) < strip.Controls.GetChildIndex(strip.Controls.Cast<Control>().Last())),
+                    "new-tab action stays directly after the last file tab");
                 Check(!button.UseMnemonic && button.AutoEllipsis, "long titles are ellipsized and ampersands are not accelerator markers");
                 Check(ButtonFor(second).BackColor != button.BackColor, "actual active tab uses selected background");
-                Check(!button.ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "向左移动").Enabled &&
-                    !ButtonFor(fourth).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离右侧标签（不关闭）").Enabled,
-                    "first and last tab menus disable impossible boundary actions");
-                Check(button.ContextMenuStrip.Items.Cast<ToolStripItem>().Single(i => i.Text == "恢复目录名称").Enabled &&
-                    !ButtonFor(second).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "恢复目录名称").Enabled,
+                Check(ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离右侧标签").Enabled &&
+                    !ButtonFor(fourth).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离右侧标签").Enabled,
+                    "last tab menu disables impossible right-detach action");
+                Check(button.ContextMenuStrip.Items.Cast<ToolStripItem>().Single(i => i.Text == "恢复默认名称").Enabled &&
+                    !ButtonFor(second).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "恢复默认名称").Enabled,
                     "reset-name menu is enabled only for custom aliases");
+                Check(button.ContextMenuStrip.Items.Cast<ToolStripItem>().OfType<ToolStripMenuItem>().Any(i => i.Text.StartsWith("关闭") && i.ShortcutKeyDisplayString == "Ctrl+W") &&
+                    !button.ContextMenuStrip.Items.Cast<ToolStripItem>().Any(i => i.Text.Contains("移动")),
+                    "tab menu shows the close shortcut and no longer exposes move-left/right entries");
                 Call("BeginPointer", button, MouseButtons.Right, new Point(20, 15));
                 Check(!Interacting(), "right-click does not arm a sorting gesture");
                 Call("BeginPointer", button, MouseButtons.Left, new Point(20, 15));
@@ -590,32 +600,30 @@ namespace ExplorerTabs.Tests
                 Call("MovePointer", button, new Point(50, 15)); Call("CancelPointer");
                 Check(!Interacting() && Call("EndPointer", button, MouseButtons.Left, new Point(50, 15)) == null,
                     "cancelled sorting cannot publish a later drop");
-                button.ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "恢复目录名称").PerformClick();
+                button.ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "恢复默认名称").PerformClick();
                 Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
                 Check(first.CustomTitle == null && ButtonFor(first).Text == first.Title && api.Events.Count == 0,
                     "actual reset-name menu restores automatic directory label without touching Explorer");
-                ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "向左移动").PerformClick();
-                Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
-                Check(host.Sessions[0] == first && host.Active == second && api.Events.Count == 0,
-                    "actual move-left menu reorders tabs without switching windows");
                 // Non-active right-click anchor must govern the batch; active tab is removed here.
-                ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离其他标签（不关闭）").PerformClick();
+                ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离其他标签").PerformClick();
                 Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
-                Check(host.Sessions.Single() == first && host.Active == first && strip.Controls.Count == 1,
+                Check(host.Sessions.Single() == first && host.Active == first && TabCount() == 1,
                     "actual other-tabs menu keeps its right-click anchor and selects it after active tab is detached");
                 Check(api.Events.Contains("restore:2") && api.Events.Contains("restore:3") && api.Events.Contains("restore:4") &&
                     !api.Events.Contains("restore:1"), "batch UI routes selected targets through existing safe restoration, not close commands");
                 api.Events.Clear();
-                ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离全部标签（不关闭）").PerformClick();
+                ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离全部标签").PerformClick();
                 Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
-                Check(host.Sessions.Count == 0 && strip.Controls.Count == 0 && api.Events.SequenceEqual(new[] { "restore:1" }),
-                    "actual all-tabs menu restores final window and leaves empty host");
+                Check(host.Sessions.Count == 0 && TabCount() == 0 && strip.Controls.Cast<Control>().Single().AccessibleName == "新建标签" &&
+                    api.Events.SequenceEqual(new[] { "restore:1" }),
+                    "actual all-tabs menu restores final window and leaves only the new-tab action");
             }
             var renameType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.RenameTabDialog", true)!;
             using (var dialog = (Form)Activator.CreateInstance(renameType, "Original")!)
             {
                 typeof(Control).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, new object[] { 2, true });
                 dialog.CreateControl(); dialog.PerformLayout();
+                Check(!dialog.ShowIcon && HasWindowRegion(dialog), "rename dialog removes the inherited title-bar icon and applies a small rounded region");
                 var input = (TextBox)renameType.GetField("name", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dialog)!;
                 var error = (Label)renameType.GetField("error", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dialog)!;
                 Check(input.MaxLength == 120 && input.Text == "Original", "rename dialog pre-fills its alias and limits input length");
@@ -943,6 +951,15 @@ namespace ExplorerTabs.Tests
         private static extern bool SetWindowPlacement(IntPtr hwnd, ref WindowPlacement placement);
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
+        [DllImport("gdi32.dll")] private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+        [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hwnd, IntPtr region);
+        [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
+        private static bool HasWindowRegion(Form form)
+        {
+            IntPtr region = CreateRectRgn(0, 0, 0, 0);
+            try { return GetWindowRgn(form.Handle, region) != 0; }
+            finally { DeleteObject(region); }
+        }
 
         private static Form Synthetic(string title) => new Form
         {

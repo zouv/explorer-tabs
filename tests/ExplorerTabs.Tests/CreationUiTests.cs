@@ -46,9 +46,11 @@ namespace ExplorerTabs.Tests
                     form.Width = 720; MakeHidden(form);
                     Check(UiField<ComboBox>(form, "mode").SelectedIndex == 1 && UiField<CheckBox>(form, "shortcuts").Checked,
                         "main form initializes from saved mode and shortcut settings without showing");
-                    var toolbar = UiField<Button>(form, "newTab").Parent!;
-                    Check(toolbar.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Left >= 0 && c.Right <= toolbar.ClientSize.Width && c.Bottom <= toolbar.ClientSize.Height),
-                        "minimum-width toolbar wraps all visible action controls within its client area");
+                    var toolbar = UiField<FlowLayoutPanel>(form, "commandToolbar");
+                    var toolbarRight = UiField<FlowLayoutPanel>(form, "commandToolbarRight");
+                    Check(toolbar.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Left >= 0 && c.Right <= toolbar.ClientSize.Width && c.Bottom <= toolbar.ClientSize.Height) &&
+                        toolbarRight.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Left >= 0 && c.Right <= toolbarRight.ClientSize.Width && c.Bottom <= toolbarRight.ClientSize.Height),
+                        "minimum-width toolbar keeps every visible action control inside its group");
                     var task = (Task)UiCall(form, "CreateTabAsync", new object?[] { null })!; PumpTask(task);
                     Check(host.Sessions.Count == 1 && host.Active!.Identity.Handle == 1 && service.Calls == 1 && service.Source == null,
                         "new tab on empty host attaches only returned fake identity and activates it");
@@ -96,7 +98,7 @@ namespace ExplorerTabs.Tests
                     api.FailValidate = false; api.FailAttach = true; api.FailRestoreHandle = 3;
                     Check(Throws(() => UiCall(form, "AttachCreated", new CreatedExplorer(Identity(3), @"C:\New"), HostingMode.Grouped)).InnerException is AggregateException &&
                         host.Sessions.Count == 3 && host.Sessions[2].State == SessionState.RecoveryRequired &&
-                        UiField<FlowLayoutPanel>(form, "tabs").Controls.Count == 3 && journal.Snapshots.Count == 3,
+                        TabControls(UiField<FlowLayoutPanel>(form, "tabs")).Length == 3 && journal.Snapshots.Count == 3,
                         "partial attach and rollback failure retains recovery journal entry and displays its recovery tab immediately");
                     api.FailAttach = false; api.FailRestoreHandle = 0; host.DetachAll();
                     UiCall(form, "SaveSettingsOnExit");

@@ -1,10 +1,12 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-10-26；无进行中开发任务；待用户真机反馈与图标选择。
+状态日期：2026-10-26；无进行中开发任务；当前工作版本 0.6.4（未打包 / 未发布）。
 源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 已发布到 GitHub Releases。
-最后验证：2026-10-26 `package.bat` 实跑产出 0.6.3 dev zip + release unpack/zip；完整 build.ps1 安全测试通过；Release 资产已上传。
+最后验证：2026-10-26 完整 `build.ps1` 安全测试通过（768 项：核心 432、原生 63、跨进程 7、标签 UI 32、创建 UI 34、工作空间 / 窗框 UI 200）；离屏图见 artifacts/ui/current-tabs.png、current-picker.png、current-settings.png、current-rename.png。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
+- 0.6.4 未发版改动：中键 / Ctrl+W 关闭、右键菜单快捷键、工具栏分组与图标、`+` 跟随最后一个标签、弹窗无边框自定义标题栏与小圆角；请手动运行 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe` 实测。
+- 本轮（未发版）：标签中键 / Ctrl+W 关闭、右键菜单快捷键展示、工具栏图标与左右分组、`+` 跟随最后一个标签；请手动运行 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe` 实测。
 - 新入口 `dist/release/unpack/ExplorerTabs.exe`（由 package.bat 产出）：先在旧宿主分离全部并正常退出，再手动运行；未自动关闭任何宿主或 Explorer。
 - 0.6.1 灰框 / Ribbon 空行、自适应标签与多行 / 单行切换、跨行排序及 125% / 150% DPI 仍待真机复验；离屏检查不等于人工验收。
 - 图标仍暂用 A；assets/icons/icon-choices.png 已更新 ExplorerTabs 名称，A / B / C 选择尚未确定。

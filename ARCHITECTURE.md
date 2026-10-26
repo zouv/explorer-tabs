@@ -27,13 +27,13 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | tests/ExplorerTabs.Tests/BrandingTests.cs、Fixtures/v0.6.1/ | 旧程序集生成的合成 JSON，字节级重序列化、改名元数据 / 资源与独立测试用户互斥 |
 | src/ExplorerTabs.App/Program.cs | 单实例 / DPI / 事故恢复，独立读取 settings.json 与 workspace.json；坏库禁用持久化 |
 | src/ExplorerTabs.App/MainForm.Chrome.cs | 无独立标题栏、系统样式 / 最大化工作区 / resize hit-test / 非客户区绘制抑制、标签空白拖动、窗口按钮及图标资源 |
-| src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色与可点击空状态；不依赖 SVG 运行库 |
+| src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色与可点击空状态、DialogStyle / DialogTitleBar 无边框弹窗与小圆角；不依赖 SVG 运行库 |
 | src/ExplorerTabs.App/MainForm.cs | 接管、激活、分离、创建、轮询、模态范围与 UI 状态同步 |
-| src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏、临时菜单所有权 / 延后释放、启动恢复横条、收藏与组 CRUD、QueueUi |
+| src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏左右分组、临时菜单所有权 / 延后释放、启动恢复横条、收藏与组 CRUD、QueueUi |
 | src/ExplorerTabs.App/MainForm.WorkspacePersistence.cs | 有界串行目录捕获、完整会话保存、串行显式恢复、自动保存、退出预保存 |
 | src/ExplorerTabs.App/MainForm.Commands.cs | 精确关闭 / 完成检测 / 重开栈、标签搜索、命令面板与路由 |
 | src/ExplorerTabs.App/QuickPickerDialog.cs | 双行搜索列表，AND 分词、键盘导航、无匹配与 Esc |
-| src/ExplorerTabs.App/TabStrip.cs | 本地标签点击 / 拖动 / 单行滚动 / 多行与纵向溢出；不接管文件拖放 |
+| src/ExplorerTabs.App/TabStrip.cs | 本地标签点击 / 拖动 / 单行滚动 / 多行与纵向溢出；尾部挂新建按钮但不参与标签测宽 / 排序；不接管文件拖放 |
 | src/ExplorerTabs.App/SettingsDialog.cs、RenameTabDialog.cs | 两页设置、快捷键组合下拉与重复校验，标签别名 |
 | src/ExplorerTabs.App/TabKeyboardHook.cs | 专用消息线程；前台 / 菜单判定，复制不可变 scope，回调只排队 |
 | src/ExplorerTabs.Core/HostController.cs、Models.cs | 身份与恢复日志先行的标签生命周期；关闭请求保留日志直到消失 |
@@ -62,6 +62,9 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 灰框 / 空栏 | MainForm.WndProc / InvalidateChrome、NativeWindowApi.MeasureEmbeddedTitleInset / EmbeddedViewportBounds / Layout | WM_NCPAINT 抑制 / NCACTIVATE lParam=-1；仅精确 Explorer 嵌入根窗口裁切，不改 Ribbon / 恢复快照 |
 | 新建 / 复制 | MainForm.CreateTabAsync / QueueCreateFromMenu、ExplorerCreationWorkflow.Run / Verify | 15 秒；排除已有与受管 HWND，核验后延迟呈现；结果 using / Dispose，成功 MarkAttached；迟到不接管 |
 | 窗框 / 图标工具栏 | MainForm.InitializeChrome / WndProc / ChromeHitTest、InitializeWorkspaceUi / UpdateToolbarHints、TabStrip.PreferredChromeHeight | 无 WS_CAPTION 但保留系统 / 缩放样式；窗口关闭仍走会话保存与恢复；100% 单行栏各 36 px |
+| 工具栏 / 标签栏布局 | MainForm.InitializeWorkspaceUi、MainForm.PaintToolbarDivider、TabStrip.SetTrailingControl / UpdateRows | 加入已有窗口与分离窗口相邻在左组；搜索 / 设置固定在右组；新建按钮紧跟最后一个标签且不参与测宽 / 拖动排序 |
+| 弹窗样式 / 标题栏 | DialogStyle.Apply、DialogTitleBar、QuickPickerDialog / SettingsDialog / RenameTabDialog / WindowPicker | 无边框自定义标题栏（标题 / 关闭 / 拖动）替代原生厚边框；Win10 用窗口 region 做小圆角；不改系统文件 / 文件夹选择框 |
+| 标签右键菜单 / 中键关闭 | MainForm.CreateTabMenu / ShowShortcut、TabStrip.MiddleClose、MainForm.CloseTabAsync | 省略移动菜单；快捷键仅用 ShortcutKeyDisplayString 展示；中键与 Ctrl+W 都走精确 WM_CLOSE，不分离 |
 | 新建呈现所有权 | BrowserReference.DeferPresentation、CreatedExplorer.BindCancellation / MarkAttached / Dispose、HostController.Attach | 恢复回调不携 COM 跨线程；新建隐藏窗日志记录独立可见恢复；失败 / 取消仅恢复精确身份的未嵌入窗 |
 | 源目录 / 当前目录 | ShellExplorerBackend.ReadDirectory、StaExplorerTabService.ReadDirectoryAsync、MainForm.ReadTabDirectoryAsync | 自己的 Shell view HWND 子孙关系，前后 identity 核验；只读 STA，不导航 |
 | 加入 | MainForm.AddWindows / AttachSelectedWindows | 用户显式选中后直接加入，无重复实验确认，不自动捕获 |
@@ -102,6 +105,10 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - 嵌入 FrameChanged 先于 Layout；只有精确 Explorer 且 client 与 window 一致，直接全宽 UIRibbonCommandBarDock 含 UIRibbonCommandBar、顶部偏移在 DPI 缩放后的 80px 内，才按实测 inset 把根窗口移到 viewport.Y-inset 并增高 inset；底部保持不变。未知布局返回 0；不改子控件、普通 / 分组窗口或恢复快照。嵌入日志记录 inset / viewport，诊断导出追加宿主区域 / DPI / 滚动状态。
 - WM_NCCALCSIZE 去独立标题框；窗框保留系统菜单 / 边缘缩放 / 工作区最大化。品牌及三个窗口按钮固定第一行，多行只增长标签区域；空白拖动 / 双击最大化。
 - 单行标签栏与工具栏各约 36 px（100%）；仅溢出才增加滚动高度；工具栏在自身底部画 1px 低饱和度线，不增加空行。分组图标按钮有 Tooltip / AccessibleName / hover / focus；tooltip 读取实际快捷键设置。
+- 工具栏分左右两组：左侧为“加入已有窗口… / 分离窗口…”相邻的窗口组，再是常用与标签组 / 会话与恢复；右侧为打开对话框的搜索与设置；两组及中缝都画同一条底部分界线。加入图标为箭头进入窗口，分离图标为箭头离开窗口，设置使用实心齿轮（非放射线太阳形）。
+- 新建标签按钮由 `TabStrip.SetTrailingControl` 挂在最后一个标签之后，`Render` 只重建 `TabButton`，尾部按钮保持在子控件末位；测宽、换行、拖动插入点只统计 `TabButton`，尾部按钮尺寸仅随 DPI 调整。
+- 标签中键与 Ctrl+W 都调用 `CloseTabAsync`（精确 `WM_CLOSE`），不再分离；标签右键菜单删除左右移动，关闭 / 复制 / 重命名通过 `ShortcutKeyDisplayString` 展示当前绑定（设置关闭快捷键时不展示）。
+- 命令面板 / 搜索、设置、重命名、加入窗口弹窗使用 `ShellDialog` + `DialogTitleBar`：无边框、无继承图标、无原生厚灰边，标题栏可拖动、右侧关闭；`DialogStyle` 在句柄创建 / 显示 / 尺寸变化时用 `CreateRoundRectRgn` + `SetWindowRgn` 加 12 逻辑 px 小圆角（Win10 无原生圆角），并保留 `CS_DROPSHADOW`；不应用到系统文件夹选择框。
 - 工具栏旧 mode / shortcuts 控件只保留状态，不再占布局；模式及快捷键开关入口在设置。临时菜单 Renderer 不改变 Closed 延后释放的安全契约。
 
 ### 3.6 产品名称与兼容身份
@@ -130,6 +137,8 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | AppSettings | 版本 1 向后兼容缺字段：WrapTabs=false、MaximumTabRows=3、RememberSession=true、22 默认 KeyBindings |
 | HostShortcutPolicy.Handle | 物理 down/up 配对，repeat 不重触发，注入不消费；scope / create / switch / active 权限限制 |
 | MainForm.managedMenuCleanups / closedManagedMenus / disposingUi | 临时菜单归宿主所有；Closed 标记待清理，下一 UI turn 释放；宿主销毁清剩余且不执行迟到命令 / 恢复可见性 |
+| TabStrip.SetTrailingControl / MiddleClose | 尾部动作控件不参与标签测宽 / 插入点；中键只触发关闭回调，由宿主复用精确 `WM_CLOSE`，不分离 / 不持久化 |
+| DialogStyle.Apply / DialogTitleBar | 仅作用于宿主自建 `ShellDialog`；无边框自定义标题栏、关闭按钮与拖动；按 DPI 设置窗口圆角 region；不接管系统对话框、不改变窗口身份 |
 | WindowIdentity / NativeWindowApi.Matches | HWND + PID / TID / 进程启动 ticks / 映像 / 类名，不仅 HWND |
 | RecoveryJournal / AppSettingsStore / WorkspaceLibraryStore | 原子写；破坏性窗口操作前日志先行；坏原文件保留并禁用本次持久化 |
 
