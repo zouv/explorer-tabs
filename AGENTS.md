@@ -1,6 +1,6 @@
-# Agent 指南 · ExplorerTabHost
+# Agent 指南 · ExplorerTabs
 
-> 本文件给在 **ExplorerTabHost 内**工作的 AI 代理：定「怎么干、先读哪、改完要更新哪」。
+> 本文件给在 **ExplorerTabs 内**工作的 AI 代理：定「怎么干、先读哪、改完要更新哪」。
 > 每次开工**先读本文件**。
 
 ---
@@ -78,7 +78,7 @@
 
 
 - 技术栈：C# / WinForms / .NET Framework 4.8 / x64，无第三方 NuGet。
-- 构建/运行：手动运行 dist/v0.6.1-release/ExplorerTabHost.exe；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
+- 构建/运行：手动运行 dist/v0.6.1-release/ExplorerTabs.exe；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
 - 代码风格：匹配现有风格（命名、目录约定、注释语言），改动小而聚焦。
 -
 
@@ -97,7 +97,7 @@
 ## 4. 验证（改完怎么确认没坏）
 
 - 改代码后至少：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke`（或 `构建 TreatWarningsAsErrors=true；bash check-docs.sh`）。
-- 能跑起来时：`手动运行 dist/v0.6.1-release/ExplorerTabHost.exe` 后实测；UI/交互改动尽量实跑确认。
+- 能跑起来时：`手动运行 dist/v0.6.1-release/ExplorerTabs.exe` 后实测；UI/交互改动尽量实跑确认。
 - **文档体检（机械兜底）**：`sh check-docs.sh` —— 查占位符残留 / HANDOFF·ARCHITECTURE 体量 / CHANGELOG 疑似漏记。它只判「脚本能判的」；**语义漂移**（图谱↔代码是否对得上）仍需 `doc-audit`。建议接入 pre-commit / CI。
 
 ---
@@ -164,5 +164,5 @@
 - 每次对用户回复称呼“啊唯”，中文沟通。
 - 用户反馈直接在对话询问，不新增人工回归清单。不得修改用户填写的 docs/manual-test.md 和 docs/v0.2-test.md。
 - 每个标签保留一个真实 Explorer，切换显隐；不改成单视图目录导航，不复制 QTTabBar GPL 代码。
-- docs 中已有源码/历史发布路径保留为历史；当前源码根为 D:/Git/zgithub/explorer_tab_host。旧目录是只读备份，不再开发。
+- docs 中已有源码/历史发布路径保留为历史；当前源码根为 D:/Git/zgithub/explorer-tabs。旧目录是只读备份，不再开发。
 - 不自动提交、推送、终止旧宿主；真实 Shell 创建需人工验证，fake 测试不能宣称真机通过。

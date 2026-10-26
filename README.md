@@ -1,4 +1,4 @@
-# ExplorerTabHost 0.6.1 — Windows 10 Explorer 多标签原型
+# ExplorerTabs 0.6.2 — Windows 10 Explorer 多标签原型
 
 独立 C# / WinForms / .NET Framework 4.8 / x64 程序。**没有改 QTTabBar，也没有复制其 GPL 代码。**
 
@@ -9,15 +9,15 @@
 构建后的程序：
 
 ```text
-D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe
+D:\Git\zgithub\explorer-tabs\dist\v0.6.2-release\ExplorerTabs.exe
 ```
 
-新版本单独输出到 `dist\v0.6.1-release`，不覆盖旧版。若旧宿主仍在运行，请先在旧版中分离全部窗口并正常退出，再启动新版。
+新版本单独输出到 `dist\v0.6.2-release`，不覆盖旧版。若旧宿主仍在运行，请先在旧版中分离全部窗口并正常退出，再启动新版。
 
 双击运行，无需管理员权限或安装。目标运行环境：Windows 10 1703+ x64，.NET Framework 4.8。当前开发 / 测试机是 Windows 10 22H2（19045）。没有在其他 Windows 10 版本验收。
 
 1. 不要使用有未完成复制、移动、删除等重要操作的 Explorer 窗口进行首轮测试。
-2. 启动 ExplorerTabHost，默认嵌入模式；需要时通过工具栏设置图标选择挂载模式。
+2. 启动 ExplorerTabs，默认嵌入模式；需要时通过工具栏设置图标选择挂载模式。
 3. 点 **＋ 新建标签** 或在宿主 / 当前受管 Explorer 前台按 **Ctrl+T**；也可点 **加入窗口** 手动选择已有窗口。支持多选；不会自动捕获任何窗口。
 4. 点击标签切换；至少两个正常标签时，可在宿主或当前 Explorer 前台使用 **Ctrl+Tab / Ctrl+Shift+Tab** 循环切换。设置页可统一禁用宿主快捷键，也可逐个改绑或禁用。键盘焦点转移为 best-effort，必要时仍可点击文件区域。
 5. 拖动标签排序；右键可真正关闭此 Explorer、收藏目录、重命名、恢复目录名称、向左 / 右移动、分离当前 / 其他 / 右侧 / 全部标签。中键仍可分离当前标签。分离不是关闭，窗口恢复为独立 Explorer。
@@ -25,6 +25,12 @@ D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe
 7. 正常退出使用 **窗口 → 恢复窗口并退出宿主** 或关闭外壳；先尝试保存会话，再恢复全部窗口，恢复失败则阻止正常退出。
 
 请先关闭 QTTabBar 或其他工具的“自动捕获新窗口”功能，避免多个工具竞争。
+
+### 0.6.2：统一名称与工程
+
+- 产品、solution、项目、命名空间与程序文件统一为 **ExplorerTabs**；仓库目录为 `D:\Git\zgithub\explorer-tabs`。
+- 为兼容已有配置、会话和事故恢复，继续使用 `%LOCALAPPDATA%\ExplorerTabHost`；不自动迁移 / 覆盖数据。新旧版沿用相同单实例互斥标识，不能同时接管窗口。
+- 新发布为 `dist\v0.6.2-release\ExplorerTabs.exe`；0.6.1 及更早发布包保持原文件名和内容。
 
 ### 本版界面调整
 
@@ -100,7 +106,7 @@ D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe
 
 ### 0.4.1：反馈修复与迁移
 
-- 项目已按 vibe-coding-starter 文档模板初始化，迁移至 D:\Git\zgithub\explorer_tab_host。沿用 C# / net48 / x64 工程，无 Python / uv 残留；旧工程及原发布保留为备份。
+- 项目已按 vibe-coding-starter 文档模板初始化，首次迁至 D:\Git\zgithub\explorer_tab_host（0.6.2 已统一改名为 explorer-tabs）。沿用 C# / net48 / x64 工程，无 Python / uv 残留；旧工程及原发布保留为备份。
 - 新建 / Ctrl+T：日志确认失败点在 Navigate2。改用 Windows SDK 完整展平的 IWebBrowser2 原生 dual ABI；PIDL 传 VT_ARRAY|VT_UI1，可选参数传 VT_EMPTY，不再使用 Type.Missing 的晚绑定参数路径。
 - 复制目录：按精确 Shell view 与源窗口归属匹配；目录优先从当前绝对 PIDL 读取，处理 LocationURL 为空的情况。拒绝共享宿主根窗口、其他标签和虚拟目录，不按标题猜测。
 - 加入窗口后不再二次弹出“实验性接管确认”，新建也移除相同确认；窗口选择器和静态风险提示保留。
@@ -114,7 +120,7 @@ D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe
 - **明确身份**：激活专属 ShellBrowserWindow COM 引用，创建前记录已有顶层 HWND（包括隐藏窗口）和受管 HWND。初始句柄若已存在，在 Navigate2 前拒绝操作。使用目录的绝对 PIDL 导航，通过专属引用 HWND 与进程身份核验；不使用标题、PID 或“最新窗口”猜测，不以启动 explorer.exe 后抓窗口作为回退。
 - **等待与取消**：目录访问与外进程 COM 均在单飞 STA 工作线程中执行；UI 请求 15 秒超时，等待时可点“取消新建”。取消后不会迟到接管。外进程调用不能保证立即终止，因此仍可能稍后出现独立新窗口；不自动关闭它。该工作线程实际退出前不允许另一次新建。
 - **设置**：记住挂载模式、快捷键开关、新建标签默认目录，以及正常退出时宿主的位置 / 尺寸 / 最大化状态。默认目录为当前用户目录；设置对话框只验证路径语法，实际可访问性在创建工作线程检查，避免 UNC 检查卡住界面。
-- **存储**：%LOCALAPPDATA%ExplorerTabHostsettings.json，与恢复日志独立。保存使用临时文件、Flush(true) 和原子替换；失败不部分更新实时设置。读取失败保留原文件、本次使用默认值并停用持久化，不悄悄覆盖损坏文件。
+- **存储**：%LOCALAPPDATA%\ExplorerTabHost\settings.json，与恢复日志独立。保存使用临时文件、Flush(true) 和原子替换；失败不部分更新实时设置。读取失败保留原文件、本次使用默认值并停用持久化，不悄悄覆盖损坏文件。
 - **保留范围**：一个标签仍对应真实常驻窗口，切换不导航；0.2.1 原生恢复 / 重绘 / 任务栏顺序与 0.3.0 标签管理逻辑不改。本轮为 Ctrl+T 扩展了键盘钩子分发，原 Ctrl+Tab 配对策略未改，仍需真实前台 / 菜单 / 对话框组合回归。
 
 本轮未增加全局自动接管、Ctrl+W、会话目录重开或看门狗。自动验证使用假 Shell 后端和测试自身窗口，没有自动创建真实 Explorer；真实 Shell 创建及复制目录需要用户体验验证。
@@ -169,47 +175,51 @@ D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe
 需要已安装 .NET SDK 和 .NET Framework 4.8 Developer Pack。不依赖第三方 NuGet 包。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "D:\Git\zgithub\explorer_tab_host\scripts\build.ps1"
+powershell -ExecutionPolicy Bypass -File "D:\Git\zgithub\explorer-tabs\scripts\build.ps1"
 
 # 可选：仅操作测试程序自己创建的透明窗口，不操作任何现有 Explorer。
-powershell -ExecutionPolicy Bypass -File "D:\Git\zgithub\explorer_tab_host\scripts\build.ps1" -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke
+powershell -ExecutionPolicy Bypass -File "D:\Git\zgithub\explorer-tabs\scripts\build.ps1" -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke
 ```
 
-测试是独立 console runner，不是 `dotnet test` / xUnit。默认运行策略 / 模拟 / 日志，以及无窗口的原生 COM vtable stub / PIDL 封送测试；原生、隐藏标签 UI、隐藏创建 / 设置 UI 及工作空间 UI smoke 显式开启。默认发布目录为 `dist\v0.6.1-release`；可用 `-OutputDirectory "dist\另一个版本"` 单独输出，不应覆盖正在运行的版本。
+测试是独立 console runner，不是 `dotnet test` / xUnit。默认运行策略 / 模拟 / 日志，以及无窗口的原生 COM vtable stub / PIDL 封送测试；原生、隐藏标签 UI、隐藏创建 / 设置 UI 及工作空间 UI smoke 显式开启。默认发布目录为 `dist\v0.6.2-release`；可用 `-OutputDirectory "dist\另一个版本"` 单独输出，不应覆盖正在运行的版本。
 
 只读 Explorer 枚举 / DPI 诊断，不移动、隐藏或接管窗口：
 
 ```powershell
-$exe = 'D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe'
+$exe = 'D:\Git\zgithub\explorer-tabs\dist\v0.6.2-release\ExplorerTabs.exe'
 Start-Process -FilePath $exe -ArgumentList '--diagnose' -WindowStyle Hidden -Wait
 Get-Content "$env:LOCALAPPDATA\ExplorerTabHost\diagnostics.txt"
 ```
 
 ## 源码结构
 
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\ExplorerCreation.cs`：专属创建流程、可取消单飞 STA 服务。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.App\ShellExplorerBackend.cs`：Shell COM、绝对 PIDL 导航及精确 HWND 目录读取。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\FolderTarget.cs`：普通目录和 UNC 校验。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\AppSettings.cs`：基础设置、原子保存及屏幕布局策略。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.App\SettingsDialog.cs`：设置对话框。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\NewTabShortcutPolicy.cs`：独立 Ctrl+T 按键配对策略。
-- `D:\Git\zgithub\explorer_tab_host\tests\ExplorerTabHost.Tests\FeatureTests.cs`、`D:\Git\zgithub\explorer_tab_host\tests\ExplorerTabHost.Tests\CreationUiTests.cs`：假 Shell 故障注入与隐藏创建 / 设置 UI 验证。
+- `D:\Git\zgithub\explorer-tabs\ExplorerTabs.sln`：统一 solution 入口；App / Core / Tests 项目均使用 ExplorerTabs 前缀。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\ProductIdentity.cs`：品牌名与必须保留的旧版数据 / 互斥身份。
+- `D:\Git\zgithub\explorer-tabs\tests\ExplorerTabs.Tests\BrandingTests.cs`：改名元数据、嵌入资源、旧 JSON 格式及合成用户跨进程互斥检查。
 
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\HostController.cs`：可测试的接管、标签切换、排序 / 别名 / 批量分离和恢复状态机。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\TabManagementPolicy.cs`：纯标签命名、批量目标、相邻接续和拖动索引策略。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.App\TabStrip.cs`：本地标签拖动、边缘滚动和菜单生命周期。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.App\RenameTabDialog.cs`：会话内别名编辑与校验。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\NativeWindowApi.cs`：Explorer 识别、身份检查、两种模式的 Win32 后端。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\RecoveryJournal.cs`：恢复日志和启动恢复报告。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\TaskbarService.cs`：Shell 任务栏注册 / 移除和 HRESULT 日志。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\RestorePresentation.cs`：隐藏样式、显示命令与异步重绘请求。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\WindowDiagnostics.cs`：只读窗口树 / DWM / 更新区域诊断。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\DiagnosticArchive.cs`：白名单本地诊断包导出。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.App\PresentationMonitor.cs`：有限延时采样与导出快照。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.Core\TabShortcutPolicy.cs`：可测试的按键配对策略。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.App\TabKeyboardHook.cs`：前台限定快捷键及专用钩子线程。
-- `D:\Git\zgithub\explorer_tab_host\src\ExplorerTabHost.App\MainForm.cs`：标签外壳、布局、手动接管和退出保护。
-- `D:\Git\zgithub\explorer_tab_host\tests\ExplorerTabHost.Tests\Program.cs`：故障注入、日志测试、本进程 / 跨进程透明窗口 smoke。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\ExplorerCreation.cs`：专属创建流程、可取消单飞 STA 服务。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.App\ShellExplorerBackend.cs`：Shell COM、绝对 PIDL 导航及精确 HWND 目录读取。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\FolderTarget.cs`：普通目录和 UNC 校验。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\AppSettings.cs`：基础设置、原子保存及屏幕布局策略。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.App\SettingsDialog.cs`：设置对话框。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\NewTabShortcutPolicy.cs`：独立 Ctrl+T 按键配对策略。
+- `D:\Git\zgithub\explorer-tabs\tests\ExplorerTabs.Tests\FeatureTests.cs`、`D:\Git\zgithub\explorer-tabs\tests\ExplorerTabs.Tests\CreationUiTests.cs`：假 Shell 故障注入与隐藏创建 / 设置 UI 验证。
+
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\HostController.cs`：可测试的接管、标签切换、排序 / 别名 / 批量分离和恢复状态机。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\TabManagementPolicy.cs`：纯标签命名、批量目标、相邻接续和拖动索引策略。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.App\TabStrip.cs`：本地标签拖动、边缘滚动和菜单生命周期。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.App\RenameTabDialog.cs`：会话内别名编辑与校验。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\NativeWindowApi.cs`：Explorer 识别、身份检查、两种模式的 Win32 后端。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\RecoveryJournal.cs`：恢复日志和启动恢复报告。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\TaskbarService.cs`：Shell 任务栏注册 / 移除和 HRESULT 日志。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\RestorePresentation.cs`：隐藏样式、显示命令与异步重绘请求。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\WindowDiagnostics.cs`：只读窗口树 / DWM / 更新区域诊断。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\DiagnosticArchive.cs`：白名单本地诊断包导出。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.App\PresentationMonitor.cs`：有限延时采样与导出快照。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.Core\TabShortcutPolicy.cs`：可测试的按键配对策略。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.App\TabKeyboardHook.cs`：前台限定快捷键及专用钩子线程。
+- `D:\Git\zgithub\explorer-tabs\src\ExplorerTabs.App\MainForm.cs`：标签外壳、布局、手动接管和退出保护。
+- `D:\Git\zgithub\explorer-tabs\tests\ExplorerTabs.Tests\Program.cs`：故障注入、日志测试、本进程 / 跨进程透明窗口 smoke。
 
 ## 验收范围
 

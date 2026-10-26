@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ExplorerTabs</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\icons\explorer-tabs-a.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup><EmbeddedResource Include="..\..\assets\icons\explorer-tabs-a.ico" LogicalName="ExplorerTabs.AppIcon.ico" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="..\ExplorerTabs.Core\ExplorerTabs.Core.csproj" /></ItemGroup>
+</Project>

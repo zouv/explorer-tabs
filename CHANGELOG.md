@@ -1,9 +1,22 @@
-# 发布变更记录 · ExplorerTabHost
+# 发布变更记录 · ExplorerTabs
 
 用户可感知变化按版本归档，遵循新增 / 变更 / 修复 / 移除 / 安全类别。
 历史版本准确发布日期未补造；迁移日为 2026-10-25。
 
 ## [未发布]
+
+## [0.6.2] — 2026-10-26
+### 统一名称与工程
+- 工具正式命名 **ExplorerTabs**；整个仓库从 D:/Git/zgithub/explorer_tab_host 移至 D:/Git/zgithub/explorer-tabs，保留 Git 历史，不改分支 / 远端，不自动提交或推送。
+- solution、App / Core / Tests 项目与目录、命名空间、程序集、EXE、manifest 身份、反射入口、UI 文案、图标文件 / 嵌入资源、构建与运行入口统一改名；窗口版本从程序集读取。清理已核验的 bin / obj，避免混入旧命名产物。
+- 更新 SVG 候选的标题与 PNG 预览，图形保持不变，当前仍暂用 A。
+### 旧版兼容与安全
+- ProductIdentity 集中保留旧数据目录 `%LOCALAPPDATA%\ExplorerTabHost` 及用户级 `Local\ExplorerTabHost.<user>` 单实例身份；不迁移 / 覆盖设置、会话、收藏、标签组或事故恢复数据，新旧版不能同时接管窗口。
+- 旧 0.6.1 Core 程序集生成的合成 settings / workspace / recovery JSON 固化为兼容测试；读取字段、枚举、Unicode / UNC 路径、快捷键和恢复快照保留，重序列化逐字节一致。互斥测试仅用自建 Guid 用户身份及无界面测试子进程。
+- 所有历史 dist 与用户已填写的 manual-test.md / v0.2-test.md 内容保持不变；不自动退出或关闭旧宿主 / Explorer。
+### 验证与发布
+- **761 项安全检查**（核心 432、原生 63、跨进程 7、标签 UI 30、创建 UI 34、工作空间 / 窗框 UI 195）；Release 0 警告 / 0 错误。单行、多行 720 / 1100 宽及设置页离屏验证通过，不将其等同真机验收。
+- 新入口 `dist/v0.6.2-release/ExplorerTabs.exe`；构建日志与离屏图在 artifacts/ui/v0.6.2/。旧包保留原名，不覆盖。
 
 ## [0.6.1] — 2026-10-26
 ### 修复

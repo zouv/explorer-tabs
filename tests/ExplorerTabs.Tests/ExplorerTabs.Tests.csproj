@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><UseWindowsForms>true</UseWindowsForms><ApplicationManifest>..\..\src\ExplorerTabs.App\app.manifest</ApplicationManifest></PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\..\src\ExplorerTabs.Core\ExplorerTabs.Core.csproj" /><ProjectReference Include="..\..\src\ExplorerTabs.App\ExplorerTabs.App.csproj" /></ItemGroup>
+  <ItemGroup><Reference Include="System.IO.Compression" /></ItemGroup>
+  <ItemGroup><None Update="Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+</Project>

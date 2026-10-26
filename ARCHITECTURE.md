@@ -1,7 +1,7 @@
-# 代码链路图谱 · ExplorerTabHost
+# 代码链路图谱 · ExplorerTabs
 
 ## 0. 边界
-源码根 D:/Git/zgithub/explorer_tab_host；旧 F:/Developer/AI/vibe/agent_codex/ExplorerTabHost 只读。
+源码根 D:/Git/zgithub/explorer-tabs；旧备份 F:/Developer/AI/vibe/agent_codex/ExplorerTabHost 只读；原 D:/Git/zgithub/explorer_tab_host 已整体重命名，不再作为工作副本。
 C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真实 Explorer；切换只显隐 / 布局，不重新导航、注入或杀共享进程。
 图谱用于定位，函数名优先于行号；入口失配先检索源码并订正本表。
 
@@ -17,35 +17,38 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 灰框 / 空标题区 | MainForm.Chrome.cs、NativeWindowApi.cs 的 MeasureEmbeddedTitleInset / Layout、ChromeUiTests.cs、EmbeddedChromeTests.cs | Shell ABI、恢复呈现内部链路 |
 | 多行 / 排序 / 设置 | TabStrip.cs、SettingsDialog.cs、AppSettings.cs、WorkspaceUiTests.cs | ShellExplorerBackend |
 | 分离黑块 / 任务栏 / 事故恢复 | HostController.cs、NativeWindowApi.cs、RestorePresentation.cs、RecoveryJournal.cs | 收藏库、快捷键设置 UI |
-| 发布 / 自动验证 | scripts/build.ps1、manager.sh、Directory.Build.props、tests/ExplorerTabHost.Tests | 用户历史反馈 |
+| 产品 / 工程改名 / 旧版兼容 | ProductIdentity.cs、Program.cs、BrandingTests.cs、工程文件、scripts/build.ps1 | Shell ABI、原生恢复执行 |
+| 发布 / 自动验证 | scripts/build.ps1、manager.sh、Directory.Build.props、tests/ExplorerTabs.Tests | 用户历史反馈 |
 
 ## 1. 文件职责
 | 文件 | 职责 |
 |---|---|
-| src/ExplorerTabHost.App/Program.cs | 单实例 / DPI / 事故恢复，独立读取 settings.json 与 workspace.json；坏库禁用持久化 |
-| src/ExplorerTabHost.App/MainForm.Chrome.cs | 无独立标题栏、系统样式 / 最大化工作区 / resize hit-test / 非客户区绘制抑制、标签空白拖动、窗口按钮及图标资源 |
-| src/ExplorerTabHost.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色与可点击空状态；不依赖 SVG 运行库 |
-| src/ExplorerTabHost.App/MainForm.cs | 接管、激活、分离、创建、轮询、模态范围与 UI 状态同步 |
-| src/ExplorerTabHost.App/MainForm.WorkspaceUi.cs | 工具栏、临时菜单所有权 / 延后释放、启动恢复横条、收藏与组 CRUD、QueueUi |
-| src/ExplorerTabHost.App/MainForm.WorkspacePersistence.cs | 有界串行目录捕获、完整会话保存、串行显式恢复、自动保存、退出预保存 |
-| src/ExplorerTabHost.App/MainForm.Commands.cs | 精确关闭 / 完成检测 / 重开栈、标签搜索、命令面板与路由 |
-| src/ExplorerTabHost.App/QuickPickerDialog.cs | 双行搜索列表，AND 分词、键盘导航、无匹配与 Esc |
-| src/ExplorerTabHost.App/TabStrip.cs | 本地标签点击 / 拖动 / 单行滚动 / 多行与纵向溢出；不接管文件拖放 |
-| src/ExplorerTabHost.App/SettingsDialog.cs、RenameTabDialog.cs | 两页设置、快捷键组合下拉与重复校验，标签别名 |
-| src/ExplorerTabHost.App/TabKeyboardHook.cs | 专用消息线程；前台 / 菜单判定，复制不可变 scope，回调只排队 |
-| src/ExplorerTabHost.Core/HostController.cs、Models.cs | 身份与恢复日志先行的标签生命周期；关闭请求保留日志直到消失 |
-| src/ExplorerTabHost.Core/ExplorerCreation.cs | 独立创建与只读目录 STA 单飞；CreatedExplorer 呈现恢复 lease / 取消交接 |
-| src/ExplorerTabHost.App/ShellExplorerBackend.cs | COM STA 后端、精确 Shell view / PIDL 匹配、原生 dual ABI；仅核验本次新建 HWND 后 Visible=false |
-| src/ExplorerTabHost.Core/WorkspaceLibrary.cs | 会话 / 收藏 / 标签组模型、深复制、验证、原子库存储、搜索和行数策略 |
-| src/ExplorerTabHost.Core/HostShortcuts.cs | 22 操作、默认与候选组合、重复验证、物理 down/up / 注入 / repeat 策略 |
-| src/ExplorerTabHost.Core/WindowClosing.cs | identity 校验后 PostMessage(WM_CLOSE)，不 detach / Quit / kill |
-| src/ExplorerTabHost.Core/FolderTarget.cs、AppSettings.cs | 普通目录验证；设置默认值兼容、深复制与原子写盘 |
-| src/ExplorerTabHost.Core/NativeWindowApi.cs、TaskbarService.cs、RestorePresentation.cs、RecoveryJournal.cs | Win32 / Shell 操作、恢复结构 / 显示顺序、只读呈现采样、事故日志 |
-| tests/ExplorerTabHost.Tests/DeferredCreationTests.cs、ChromeUiTests.cs | fake 创建取消 / 失败 / lease 并发与隐藏真实窗框 / 紧凑布局 / 图标 tooltip；不运行真实 Explorer |
-| tests/ExplorerTabHost.Tests/EmbeddedChromeTests.cs | 自注册 Ribbon 类与隐藏自建 HWND 测标题区测量 / 根窗口裁切 / 未知布局回退 / 非 Explorer 恢复；不操作真实 Shell |
+| src/ExplorerTabs.Core/ProductIdentity.cs | 产品名 ExplorerTabs；集中旧数据目录与跨版本单实例身份，不执行迁移 |
+| tests/ExplorerTabs.Tests/BrandingTests.cs、Fixtures/v0.6.1/ | 旧程序集生成的合成 JSON，字节级重序列化、改名元数据 / 资源与独立测试用户互斥 |
+| src/ExplorerTabs.App/Program.cs | 单实例 / DPI / 事故恢复，独立读取 settings.json 与 workspace.json；坏库禁用持久化 |
+| src/ExplorerTabs.App/MainForm.Chrome.cs | 无独立标题栏、系统样式 / 最大化工作区 / resize hit-test / 非客户区绘制抑制、标签空白拖动、窗口按钮及图标资源 |
+| src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色与可点击空状态；不依赖 SVG 运行库 |
+| src/ExplorerTabs.App/MainForm.cs | 接管、激活、分离、创建、轮询、模态范围与 UI 状态同步 |
+| src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏、临时菜单所有权 / 延后释放、启动恢复横条、收藏与组 CRUD、QueueUi |
+| src/ExplorerTabs.App/MainForm.WorkspacePersistence.cs | 有界串行目录捕获、完整会话保存、串行显式恢复、自动保存、退出预保存 |
+| src/ExplorerTabs.App/MainForm.Commands.cs | 精确关闭 / 完成检测 / 重开栈、标签搜索、命令面板与路由 |
+| src/ExplorerTabs.App/QuickPickerDialog.cs | 双行搜索列表，AND 分词、键盘导航、无匹配与 Esc |
+| src/ExplorerTabs.App/TabStrip.cs | 本地标签点击 / 拖动 / 单行滚动 / 多行与纵向溢出；不接管文件拖放 |
+| src/ExplorerTabs.App/SettingsDialog.cs、RenameTabDialog.cs | 两页设置、快捷键组合下拉与重复校验，标签别名 |
+| src/ExplorerTabs.App/TabKeyboardHook.cs | 专用消息线程；前台 / 菜单判定，复制不可变 scope，回调只排队 |
+| src/ExplorerTabs.Core/HostController.cs、Models.cs | 身份与恢复日志先行的标签生命周期；关闭请求保留日志直到消失 |
+| src/ExplorerTabs.Core/ExplorerCreation.cs | 独立创建与只读目录 STA 单飞；CreatedExplorer 呈现恢复 lease / 取消交接 |
+| src/ExplorerTabs.App/ShellExplorerBackend.cs | COM STA 后端、精确 Shell view / PIDL 匹配、原生 dual ABI；仅核验本次新建 HWND 后 Visible=false |
+| src/ExplorerTabs.Core/WorkspaceLibrary.cs | 会话 / 收藏 / 标签组模型、深复制、验证、原子库存储、搜索和行数策略 |
+| src/ExplorerTabs.Core/HostShortcuts.cs | 22 操作、默认与候选组合、重复验证、物理 down/up / 注入 / repeat 策略 |
+| src/ExplorerTabs.Core/WindowClosing.cs | identity 校验后 PostMessage(WM_CLOSE)，不 detach / Quit / kill |
+| src/ExplorerTabs.Core/FolderTarget.cs、AppSettings.cs | 普通目录验证；设置默认值兼容、深复制与原子写盘 |
+| src/ExplorerTabs.Core/NativeWindowApi.cs、TaskbarService.cs、RestorePresentation.cs、RecoveryJournal.cs | Win32 / Shell 操作、恢复结构 / 显示顺序、只读呈现采样、事故日志 |
+| tests/ExplorerTabs.Tests/DeferredCreationTests.cs、ChromeUiTests.cs | fake 创建取消 / 失败 / lease 并发与隐藏真实窗框 / 紧凑布局 / 图标 tooltip；不运行真实 Explorer |
+| tests/ExplorerTabs.Tests/EmbeddedChromeTests.cs | 自注册 Ribbon 类与隐藏自建 HWND 测标题区测量 / 根窗口裁切 / 未知布局回退 / 非 Explorer 恢复；不操作真实 Shell |
 | assets/icons/ | 三版原创 SVG、对比预览与暂用 A 的多尺寸 ICO / 嵌入资源 |
-| tests/ExplorerTabHost.Tests/WorkspaceTests.cs、WorkspaceUiTests.cs | 库 / 快捷键 / close / STA 策略；隐藏 UI 会话、迟到结果、多行跨行拖动、设置 / 搜索 |
-| tests/ExplorerTabHost.Tests/Program.cs、FeatureTests.cs、CreationUiTests.cs、ShellInteropTests.cs | 基线断言、fake Shell、自建透明窗口、隐藏 UI 与原生 ABI stub |
+| tests/ExplorerTabs.Tests/WorkspaceTests.cs、WorkspaceUiTests.cs | 库 / 快捷键 / close / STA 策略；隐藏 UI 会话、迟到结果、多行跨行拖动、设置 / 搜索 |
+| tests/ExplorerTabs.Tests/Program.cs、FeatureTests.cs、CreationUiTests.cs、ShellInteropTests.cs | 基线断言、fake Shell、自建透明窗口、隐藏 UI 与原生 ABI stub |
 | scripts/build.ps1、manager.sh、Directory.Build.props | net48 / x64 / 版本、受保护发布、可选安全 smoke |
 | dist/、artifacts/ | Git 忽略的版本化发布、离屏图像与验证日志 |
 | docs/ | 使用 / 历史反馈；不改用户已填清单 |
@@ -55,6 +58,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 ## 2. 任务 → 代码入口
 | 任务 | 文件 / 函数 | 约束 |
 |---|---|---|
+| 产品 / 旧版身份 | ProductIdentity.GetStateDirectory / GetMutexName、Program.Main、BrandingUnitTests | 继续旧 LocalAppData 目录与 per-user Local mutex；仅测试合成身份，不争用实际宿主 |
 | 灰框 / 空栏 | MainForm.WndProc / InvalidateChrome、NativeWindowApi.MeasureEmbeddedTitleInset / EmbeddedViewportBounds / Layout | WM_NCPAINT 抑制 / NCACTIVATE lParam=-1；仅精确 Explorer 嵌入根窗口裁切，不改 Ribbon / 恢复快照 |
 | 新建 / 复制 | MainForm.CreateTabAsync / QueueCreateFromMenu、ExplorerCreationWorkflow.Run / Verify | 15 秒；排除已有与受管 HWND，核验后延迟呈现；结果 using / Dispose，成功 MarkAttached；迟到不接管 |
 | 窗框 / 图标工具栏 | MainForm.InitializeChrome / WndProc / ChromeHitTest、InitializeWorkspaceUi / UpdateToolbarHints、TabStrip.PreferredChromeHeight | 无 WS_CAPTION 但保留系统 / 缩放样式；窗口关闭仍走会话保存与恢复；100% 单行栏各 36 px |
@@ -99,9 +103,16 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - 单行标签栏与工具栏各约 36 px（100%）；仅溢出才增加滚动高度；工具栏在自身底部画 1px 低饱和度线，不增加空行。分组图标按钮有 Tooltip / AccessibleName / hover / focus；tooltip 读取实际快捷键设置。
 - 工具栏旧 mode / shortcuts 控件只保留状态，不再占布局；模式及快捷键开关入口在设置。临时菜单 Renderer 不改变 Closed 延后释放的安全契约。
 
+### 3.6 产品名称与兼容身份
+- 当前 solution / 项目 / namespace / assembly / exe / manifest / 嵌入图标统一 ExplorerTabs；Form 标题版本读取程序集，不维护第二份版本号。
+- ProductIdentity.Name 是品牌名；LegacyIdentity 是历史存储与互斥契约。`%LOCALAPPDATA%\ExplorerTabHost` 中 settings / workspace / recovery / logs 保持原位，不迁移 / 覆盖；`Local\ExplorerTabHost.<user>` 同旧版互斥，改名不能开启第二个接管宿主。
+- JSON DTO 与字段 / enum 数值不改；Fixtures/v0.6.1 是旧程序集生成的合成数据，读取与重序列化逐字节核对；读取事故日志不会执行恢复。
+- 默认测试的 mutex 探针仅启动测试 runner，自建 Guid 用户身份、CreateNoWindow，不读取实际用户的状态或窗口。历史 dist / 验证记录与用户清单原样保留，发布只复制新构建的明确文件名单。
+
 ## 4. 接口契约
 | 接口 | 契约 |
 |---|---|
+| ProductIdentity.GetStateDirectory / GetMutexName | 纯路径 / 名称计算；共享旧版存储与 per-user session-local 互斥；不创建 / 迁移目录 |
 | IExplorerTabService.CreateAsync | source 可空，受管 HWND 快照；返回精确 WindowIdentity / Directory；Dispose 仅释放 COM |
 | IExplorerDirectoryService.ReadDirectoryAsync / IsReading | 复制 identity、只读单飞 STA；取消及时但不提前放 gate；无新建 / 导航 fallback |
 | IWindowCloser.RequestClose | 明确 session 身份，异步关闭单 HWND；成功仅表示消息入队，不保证窗口已关闭 |
@@ -118,5 +129,5 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 Windows + .NET SDK + .NET Framework 4.8 Developer Pack，无第三方 NuGet。
 入口：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke。
 测试不启动真实 Shell、不 Show 交互宿主、不注册全局钩子；原生 COM stub 只本机 PIDL 解析。--workspace-ui-smoke 包含工作空间与窗框测试（100 + 95）；--chrome-ui-smoke 可单独运行。--render-ui / --render-tabs / --render-workspace / --render-picker / --render-settings / --render-settings-keys / --render-rename 生成隐藏实际控件图像。
-发布 dist/v0.6.1-release；保留 0.4.1 / 0.5.0 / 0.5.1 / 0.6.0；最终验证数量以 CHANGELOG / HANDOFF 为准。
+发布 dist/v0.6.2-release/ExplorerTabs.exe；保留所有旧 dist 原文件名 / 内容，清理仅限已核验项目 bin / obj；最终验证数量以 CHANGELOG / HANDOFF 为准。
 真实关闭、会话批量创建、新快捷键前台边界及多行实际 DPI 体验留用户在对话验收，不写新回归清单。
