@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -59,6 +59,9 @@ namespace ExplorerTabHost.Tests
                     Check(logs.Any(l => l.Contains("ABI=vtable")) && logs.Any(l => l.Contains("Navigate2 returned")), "navigation logs record ABI, argument types and completion stage");
                     browser.Show();
                     Check(native.VisibleValue == -1, "Visible setter marshals VARIANT_TRUE as -1 to native stub");
+                    var browserRcw = browser.GetType().GetField("browser", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(browser)!;
+                    type.GetMethod("SetVisible")!.Invoke(browserRcw, new object[] { false });
+                    Check(native.VisibleValue == 0 && native.InvokeCalls == 0, "deferred Visible=false marshals VARIANT_FALSE through native vtable without IDispatch");
                     var cancelled = new CancellationToken(true);
                     Check(Throws(() => browser.Navigate(Path.GetTempPath(), cancelled)) is OperationCanceledException && native.NavigateCalls == 1,
                         "pre-cancelled native navigation does not parse or invoke COM");

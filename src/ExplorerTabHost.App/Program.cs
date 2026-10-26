@@ -54,6 +54,7 @@ namespace ExplorerTabHost.App
                     return 1;
                 }
                 MainForm? form = null;
+                bool messageLoopStarted = false;
                 try
                 {
                     // Match the first existing Explorer's context. Every attach still validates its own context.
@@ -76,20 +77,31 @@ namespace ExplorerTabHost.App
                     }
                     form = new MainForm(new HostController(CreateWindowApi(log), journal), log, settings, preferences,
                         new StaExplorerTabService(() => new ShellExplorerBackend(message => log.Write(message))));
+                    IWorkspaceLibraryStore? workspaceStore = new WorkspaceLibraryStore(Path.Combine(stateDirectory, "workspace.json"));
+                    var workspace = new WorkspaceLibrary();
+                    try { workspace = workspaceStore.Read() ?? workspace; }
+                    catch (Exception error)
+                    {
+                        log.Write("Workspace invalid/unreadable; original preserved, persistence disabled", error); workspaceStore = null;
+                        MessageBox.Show("会话库无法读取，原文件保留且本次不自动覆盖。常用目录 / 会话保存暂不可用。\n请备份并检查 workspace.json 后重启。\n\n" + error.Message,
+                            "ExplorerTabHost 会话库", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    form.ConfigureLibrary(workspaceStore, workspace);
                     Application.ThreadException += (_, e) =>
                     {
                         log.Write("Unhandled UI exception", e.Exception);
                         form.ReportError("发生异常，程序未退出。请先分离所有窗口。", e.Exception);
                     };
+                    messageLoopStarted = true;
                     Application.Run(form);
                     return 0;
                 }
                 catch (Exception error)
                 {
-                    log.Write("Startup/run failed", error);
+                    log.Write(messageLoopStarted ? "Run failed" : "Startup failed", error);
                     // This is only a best effort, not a crash recovery guarantee.
                     form?.EmergencyDetach();
-                    MessageBox.Show(error.Message + "\n日志：" + log.FilePath, "ExplorerTabHost 启动失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(error.Message + "\n日志：" + log.FilePath, messageLoopStarted ? "ExplorerTabHost 运行异常" : "ExplorerTabHost 启动失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return 1;
                 }
                 finally { mutex.ReleaseMutex(); }

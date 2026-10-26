@@ -71,6 +71,7 @@ namespace ExplorerTabHost.Core
         public SessionState State { get; internal set; }
         public string LastError { get; internal set; } = "";
         public string Title { get; set; }
+        public DateTime? CloseRequestedUtc { get; internal set; }
         // Host-only label. Never changes the native window caption, directory or recovery identity.
         public string? CustomTitle { get; internal set; }
         public string DisplayTitle => CustomTitle ?? Title;

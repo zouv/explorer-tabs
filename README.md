@@ -1,30 +1,36 @@
-# ExplorerTabHost 0.4.1 — Windows 10 Explorer 多标签原型
+# ExplorerTabHost 0.6.1 — Windows 10 Explorer 多标签原型
 
 独立 C# / WinForms / .NET Framework 4.8 / x64 程序。**没有改 QTTabBar，也没有复制其 GPL 代码。**
 
-每个标签对应一个存活的原生 Explorer 窗口。切换只布局 / 显隐窗口，不调用 `BrowseObject`，不重新导航文件夹，不关闭 Explorer，不注入 DLL。保留状态的前提是 Explorer 自身及窗口仍然存活；这不是持久化会话恢复。
+每个标签对应一个存活的原生 Explorer 窗口。切换只布局 / 显隐窗口，不调用 `BrowseObject`，不重新导航文件夹，不关闭 Explorer，不注入 DLL。保留完整视图状态的前提是 Explorer 自身及窗口仍然存活。0.5.0 另外支持普通目录会话保存与显式重开；重开不等于恢复原视图历史。
 
 ## 运行
 
 构建后的程序：
 
 ```text
-D:\Git\zgithub\explorer_tab_host\dist\v0.4.1-release\ExplorerTabHost.exe
+D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe
 ```
 
-新版本单独输出到 `dist\v0.4.1-release`，不覆盖旧版。若旧宿主仍在运行，请先在旧版中分离全部窗口并正常退出，再启动新版。
+新版本单独输出到 `dist\v0.6.1-release`，不覆盖旧版。若旧宿主仍在运行，请先在旧版中分离全部窗口并正常退出，再启动新版。
 
 双击运行，无需管理员权限或安装。目标运行环境：Windows 10 1703+ x64，.NET Framework 4.8。当前开发 / 测试机是 Windows 10 22H2（19045）。没有在其他 Windows 10 版本验收。
 
 1. 不要使用有未完成复制、移动、删除等重要操作的 Explorer 窗口进行首轮测试。
-2. 启动 ExplorerTabHost，选择挂载模式。
+2. 启动 ExplorerTabHost，默认嵌入模式；需要时通过工具栏设置图标选择挂载模式。
 3. 点 **＋ 新建标签** 或在宿主 / 当前受管 Explorer 前台按 **Ctrl+T**；也可点 **加入窗口** 手动选择已有窗口。支持多选；不会自动捕获任何窗口。
-4. 点击标签切换；至少两个正常标签时，可在宿主或当前 Explorer 前台使用 **Ctrl+Tab / Ctrl+Shift+Tab** 循环切换。工具栏“快捷键”可同时关闭 Ctrl+Tab 和 Ctrl+T。键盘焦点转移为 best-effort，必要时仍可点击文件区域。
-5. 拖动标签排序；右键可重命名、恢复目录名称、向左 / 右移动、分离当前 / 其他 / 右侧 / 全部标签。中键仍可分离当前标签。分离不是关闭，窗口恢复为独立 Explorer。
+4. 点击标签切换；至少两个正常标签时，可在宿主或当前 Explorer 前台使用 **Ctrl+Tab / Ctrl+Shift+Tab** 循环切换。设置页可统一禁用宿主快捷键，也可逐个改绑或禁用。键盘焦点转移为 best-effort，必要时仍可点击文件区域。
+5. 拖动标签排序；右键可真正关闭此 Explorer、收藏目录、重命名、恢复目录名称、向左 / 右移动、分离当前 / 其他 / 右侧 / 全部标签。中键仍可分离当前标签。分离不是关闭，窗口恢复为独立 Explorer。
 6. 标签右键 **复制此标签的目录…** 创建独立的新 Explorer；通过 **设置…** 修改默认目录、挂载模式和快捷键。已有标签时不能改模式。
-7. 正常退出使用 **恢复并退出** 或关闭外壳；会先恢复全部窗口，失败则阻止正常退出。
+7. 正常退出使用 **窗口 → 恢复窗口并退出宿主** 或关闭外壳；先尝试保存会话，再恢复全部窗口，恢复失败则阻止正常退出。
 
 请先关闭 QTTabBar 或其他工具的“自动捕获新窗口”功能，避免多个工具竞争。
+
+### 本版界面调整
+
+- 标签按标题与实际字体自适应：默认最小 110 / 最大 280 逻辑 px，超长标题省略但保留完整 Tooltip；多行按各标签真实宽度换行。
+- 工具栏底部采用低饱和度 1px 分界线，不额外占一行。嵌入时根据 Windows 10 Ribbon 的实际位置裁去其残留标题空区；未知布局保留原样，绝不猜固定偏移或修改 Ribbon 子控件。
+- 宿主抑制原生边框的激活重绘，保留边缘缩放与系统窗口行为。灰框 / 空栏的实际机器效果仍需体验确认；可用底部诊断图标导出含宿主布局 / DPI 与嵌入偏移的日志。
 
 ### 模式差异
 
@@ -40,7 +46,57 @@ D:\Git\zgithub\explorer_tab_host\dist\v0.4.1-release\ExplorerTabHost.exe
 
 启动时在创建 WinForms HWND 前匹配第一个已有 Explorer 的 DPI awareness，每次嵌入还会独立检查。上下文不一致就拒绝嵌入，不冒险调用 `SetParent`。不同 DPI awareness 的窗口不能强行混用；可分离全部标签后切换顶层分组。
 
-**原型不是生产级窗口管理器。** 尚未实现 Ctrl+W 关闭窗口、自动接管、任务栏统一、跨宿主拖标签、窗口关闭按钮、会话目录重开、托盘 / 看门狗。没有伪造前台权限，也没有 `AttachThreadInput` 强行抢焦点。
+**原型不是生产级窗口管理器。** 尚未实现自动接管、任务栏统一、跨宿主拖标签、每标签内置关闭按钮、完整视图状态跨运行恢复、托盘 / 看门狗。没有伪造前台权限，也没有 `AttachThreadInput` 强行抢焦点。
+
+### 0.6.1：浏览器式界面与新建呈现优化
+
+- **窗口栏**：移除独立标题栏，标签与最小化 / 最大化 / 关闭在同一行；标签空白可拖动、双击最大化，品牌图标可打开系统菜单。关闭宿主仍保存会话并恢复窗口，不等同于右键关闭标签。
+- **工具栏**：新建 / 加入窗口｜标签搜索 / 常用目录与标签组 / 会话｜窗口管理 / 设置，改用分组图标按钮与 Tooltip；提示展示实际配置的快捷键。诊断入口位于底部右侧。
+- **内容优先**：100% 缩放单行标签栏与工具栏各约 36 px；无溢出不占额外滚动高度，多行仍按设置限制可见行数。活动标签、hover / focus、菜单及文字按钮使用统一配色，空状态可直接新建或加入窗口。
+- **Ctrl+T / 复制 / 批量打开**：精确核验本次新建 Explorer 后先延迟显示，准备好再附加标签，去掉主动 Show 独立窗的步骤；失败 / 取消会恢复本次新建独立窗口的可见性。不捕获其他窗口，不关闭失败创建的窗口。
+- **边界**：Shell COM 激活瞬间及内部导航仍可能短暂显示；是否完全无闪现需用户真机确认，当前不保证零闪现。硬退出 / 进程被杀仍不是完全可恢复。
+- **应用图标**：`assets/icons` 有 A（蓝色叠窗文件夹）、B（深色活动标签）、C（绿色文件夹组）三版原生 SVG 与 `icon-choices.png` 对比图。暂用 A 作为多尺寸 exe / 窗口 ICO，最终款式等待选择。
+
+### 0.5.1：菜单生命周期修复
+
+- 修复工具栏“常用 / 标签组”“会话”“窗口”菜单关闭时的 ContextMenuStrip 已释放异常；菜单与模态范围在框架关闭流程返回后释放，不在 Closed 内同步 Dispose。
+- 标签右键重命名 / 排序 / 恢复名称 / 分离，以及库删除操作统一延后执行，避免在菜单点击链路里重建控件或打开嵌套对话框。
+- 菜单取消、显示失败与宿主退出都有显式清理；增加菜单打开 / 关闭原因 / 释放日志。运行中外层异常不再误报为“启动失败”。
+- 不修改已保存设置、会话或窗口恢复日志；0.4.1 / 0.5.0 发布包保留，人工菜单操作需再次体验验证。
+
+### 0.5.0：工作空间与标签操作
+
+- **常用目录 / 标签组**：工具栏提供当前目录收藏、文件夹选择添加、打开 / 重命名 / 移除；标签组保存普通目录顺序、别名与活动位置，打开时追加标签。删除收藏 / 组不关闭窗口，同名组替换会确认。
+- **会话**：默认自动保存，启动时只提示“恢复上次会话”，不自动创建窗口。可显式保存 / 恢复 / 清除，也可在设置关闭自动保存。清除后不立即自动重建，直到新的标签结构变化或手动保存。
+- **保存保护**：普通目录只读捕获，每项有超时；任意读取失败（如虚拟目录）或捕获期间排序 / 别名 / 活动改变，都保留旧会话或组，不静默保存半份。成功的相同内容不重复写盘。
+- **恢复保护**：逐项新建、可取消，失败跳过，成功标签保留；迟到结果不接管，不无限增加卡住的 STA 线程。单次会话 / 组最多 100 标签；组追加后的受管总数不超过 100。
+- **关闭与分离**：右键“关闭此标签的 Explorer”或 Ctrl+W 请求该精确 HWND 关闭；不杀 explorer.exe、不先分离、不主动恢复为普通窗口。保留恢复日志和标签直到窗口确认消失；超过约 6 秒仍存活则保留并允许重试，不强杀。分离 / 中键 / 普通退出仍恢复独立窗口，不关闭。
+- **重开**：Ctrl+Shift+T 按最近顺序重开本次运行中已关闭的普通目录和别名（最多 20 项）；不恢复浏览历史、选中项、滚动位置或已关闭 Explorer 实例。
+- **标签列表 / 溢出搜索**：工具栏“标签列表…”或 Ctrl+P 按名称 / 目录过滤，空格分词 AND；↑↓ / Enter / Esc。列表打开前最多约 2.5 秒串行刷新目录，未能刷新时可显示旧缓存 / 标题，不猜虚拟目录路径。
+- **多行标签**：设置 → 常规 / 标签栏 → 多行标签栏（Wrap Tabs），默认关闭；可见上限 2–8 行，默认 3。超出纵向滚动，支持跨行排序和揭示选中标签；单行模式保留横向滚动。
+- **命令面板**：Ctrl+Shift+P 搜索常用命令、收藏目录与标签组。
+- **界面**：紧凑工具栏、明确的窗口操作菜单、活动标签高亮、双行搜索结果、常规 / 快捷键两页设置。自动保存 / 批量创建期间部分冲突操作暂时禁用；可用“取消操作”停止当前工作。
+
+#### 默认快捷键
+
+| 快捷键 | 操作 |
+|---|---|
+| Ctrl+T | 新建标签 |
+| Ctrl+W | 关闭当前标签的 Explorer（非分离） |
+| Ctrl+P / Ctrl+Shift+P | 标签搜索 / 命令面板 |
+| Ctrl+Shift+T | 重开刚关闭的普通目录 |
+| Ctrl+Shift+D | 复制当前标签目录 |
+| Ctrl+Tab / Ctrl+Shift+Tab | 下一 / 上一标签 |
+| Ctrl+PageDown / Ctrl+PageUp | 下一 / 上一标签备用组合 |
+| Ctrl+1…8 / Ctrl+9 | 第 N 个 / 最后一个标签 |
+| Ctrl+Shift+R | 重命名当前标签；F2 留给 Explorer 文件重命名 |
+| Ctrl+Shift+S | 保存当前会话 |
+| Ctrl+, | 设置 |
+
+设置 → 快捷键中有 22 个操作，可从受支持组合中重绑、留空禁用或恢复默认；重复组合不能保存。不是任意键录制器，也没有全局文件操作快捷键。
+只在宿主 / 当前受管 Explorer 前台、非菜单 / 独立对话框 / 宿主弹窗时生效；其他程序不受接管。实际前台、焦点和各 DPI 环境仍待本轮用户验收。
+
+当前 0.6.1 Release 构建零警告 / 零错误，666 项安全自动检查通过（核心 396、原生 44、跨进程 7、标签 UI 29、创建 UI 34、工作空间 / 窗框 UI 156），并检查空状态、720 / 1100 宽单行 / 多行、设置两页及重命名实际控件的离屏图像。**未自动运行真实 Explorer / 交互宿主 / 全局钩子；新建闪现、原生窗框及高 DPI 体验需用户反馈。**
 
 ### 0.4.1：反馈修复与迁移
 
@@ -97,6 +153,7 @@ D:\Git\zgithub\explorer_tab_host\dist\v0.4.1-release\ExplorerTabHost.exe
 %LOCALAPPDATA%\ExplorerTabHost\host.log
 %LOCALAPPDATA%\ExplorerTabHost\recovery.json
 %LOCALAPPDATA%\ExplorerTabHost\settings.json
+%LOCALAPPDATA%\ExplorerTabHost\workspace.json
 ```
 
 恢复日志用临时文件、`Flush(true)` 和替换 / 重命名更新。必须先成功写入，才允许接管。分离后日志清理失败时，当前进程只重试日志清理，不再次移动已恢复的窗口。身份查询权限失败被视为“未知”，不会当成窗口已消失而丢弃记录。
@@ -115,15 +172,15 @@ D:\Git\zgithub\explorer_tab_host\dist\v0.4.1-release\ExplorerTabHost.exe
 powershell -ExecutionPolicy Bypass -File "D:\Git\zgithub\explorer_tab_host\scripts\build.ps1"
 
 # 可选：仅操作测试程序自己创建的透明窗口，不操作任何现有 Explorer。
-powershell -ExecutionPolicy Bypass -File "D:\Git\zgithub\explorer_tab_host\scripts\build.ps1" -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke
+powershell -ExecutionPolicy Bypass -File "D:\Git\zgithub\explorer_tab_host\scripts\build.ps1" -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke
 ```
 
-测试是独立 console runner，不是 `dotnet test` / xUnit。默认运行策略 / 模拟 / 日志，以及无窗口的原生 COM vtable stub / PIDL 封送测试；原生、隐藏标签 UI 和隐藏创建 / 设置 UI smoke 显式开启。默认发布目录为 `dist\v0.4.1-release`；可用 `-OutputDirectory "dist\另一个版本"` 单独输出，不应覆盖正在运行的版本。
+测试是独立 console runner，不是 `dotnet test` / xUnit。默认运行策略 / 模拟 / 日志，以及无窗口的原生 COM vtable stub / PIDL 封送测试；原生、隐藏标签 UI、隐藏创建 / 设置 UI 及工作空间 UI smoke 显式开启。默认发布目录为 `dist\v0.6.1-release`；可用 `-OutputDirectory "dist\另一个版本"` 单独输出，不应覆盖正在运行的版本。
 
 只读 Explorer 枚举 / DPI 诊断，不移动、隐藏或接管窗口：
 
 ```powershell
-$exe = 'D:\Git\zgithub\explorer_tab_host\dist\v0.4.1-release\ExplorerTabHost.exe'
+$exe = 'D:\Git\zgithub\explorer_tab_host\dist\v0.6.1-release\ExplorerTabHost.exe'
 Start-Process -FilePath $exe -ArgumentList '--diagnose' -WindowStyle Hidden -Wait
 Get-Content "$env:LOCALAPPDATA\ExplorerTabHost\diagnostics.txt"
 ```

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -12,7 +12,7 @@ using ExplorerTabHost.Core;
 
 namespace ExplorerTabHost.App
 {
-    internal sealed class MainForm : Form
+    internal sealed partial class MainForm : Form
     {
         private readonly HostController controller;
         private readonly AppLog log;
@@ -32,10 +32,10 @@ namespace ExplorerTabHost.App
         private readonly IAppSettingsStore? settingsStore;
         private readonly IExplorerTabService explorerTabs;
         private CancellationTokenSource? creation;
-        private readonly Button addWindows = new Button { Text = "加入窗口…", AutoSize = true };
-        private readonly Button preferences = new Button { Text = "设置…", AutoSize = true };
-        private readonly Button newTab = new Button { Text = "＋ 新建标签", AutoSize = true };
-        private readonly Button cancelCreation = new Button { Text = "取消新建", AutoSize = true, Visible = false };
+        private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入窗口…");
+        private readonly IconButton preferences = new IconButton(UiGlyph.Settings, "设置…");
+        private readonly IconButton newTab = new IconButton(UiGlyph.NewTab, "新建标签") { Primary = true };
+        private readonly IconButton cancelCreation = new IconButton(UiGlyph.Cancel, "取消操作") { Visible = false };
 
         public MainForm(HostController controller, AppLog log)
             : this(controller, log, new AppSettings(), null, new StaExplorerTabService(() => new ShellExplorerBackend())) { }
@@ -46,55 +46,40 @@ namespace ExplorerTabHost.App
             this.controller = controller;
             this.log = log;
             presentation = new PresentationMonitor(log);
-            Text = "ExplorerTabHost 0.4.1 · Windows 10";
+            Text = "ExplorerTabHost 0.6.1";
             Font = new Font("Microsoft YaHei UI", 9F);
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(1100, 800);
             MinimumSize = new Size(720, 500);
-            var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(8), WrapContents = true };
+            var toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 36, AutoSize = false, Padding = new Padding(8, 2, 8, 2), WrapContents = false };
             var add = addWindows;
-            var detach = new Button { Text = "分离当前", AutoSize = true };
-            var detachAll = new Button { Text = "分离全部", AutoSize = true };
-            var exit = new Button { Text = "恢复并退出", AutoSize = true };
             mode.DropDownStyle = ComboBoxStyle.DropDownList;
             mode.Width = 200;
             mode.Items.AddRange(new object[] { "嵌入窗口（实验性）", "顶层窗口分组（兼容）" });
             mode.SelectedIndex = settings.Mode == HostingMode.Embedded ? 0 : 1;
+            mode.TabStop = false; shortcuts.TabStop = false;
             shortcuts.Text = "快捷键"; shortcuts.Checked = settings.ShortcutsEnabled;
             add.Click += (_, __) => AddWindows();
-            detach.Click += (_, __) => { if (controller.Active != null) Detach(controller.Active); };
-            detachAll.Click += (_, __) => DetachAll(false);
-            exit.Click += (_, __) => Close();
             newTab.Click += async (_, __) => await CreateTabAsync(null);
-            cancelCreation.Click += (_, __) => creation?.Cancel();
+            cancelCreation.Click += (_, __) => { creation?.Cancel(); workspaceOperation?.Cancel(); foreach (var close in closeReading.Values.ToArray()) close.Cancel(); };
 
             preferences.Click += (_, __) => ShowSettings();
-            toolbar.Controls.AddRange(new Control[] { newTab, add, detach, detachAll, mode, shortcuts, preferences, exit, cancelCreation });
-            // Reserve a full horizontal scrollbar row so overflow never clips buttons or triggers vertical scrolling.
-            tabs.Dock = DockStyle.Top; tabs.Height = 47 + SystemInformation.HorizontalScrollBarHeight; tabs.Padding = new Padding(8, 4, 8, 4);
-            tabs.WrapContents = false; tabs.AutoScroll = true; tabs.BackColor = Color.FromArgb(235, 238, 243);
+            tabs.Padding = new Padding(2, 2, 2, 0);
             tabs.Selected += SelectTab;
             tabs.MiddleDetach += Detach;
             tabs.MoveRequested += MoveTab;
             tabs.InteractionChanged += _ => SyncShortcutScope();
             content.Dock = DockStyle.Fill;
             content.BackColor = Color.FromArgb(249, 250, 252);
-            content.Controls.Add(new Label
-            {
-                Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
-                Text = "点“＋ 新建标签”创建窗口，或用“加入窗口”管理已有窗口\n\n" +
-                    "每个标签保留真实窗口，不重新导航目录。\n" +
-                    "拖动标签排序；右键可重命名、分离其他或右侧标签。\n" +
-                    "Ctrl+T 新建标签；复制当前目录可使用标签右键菜单。\n\n" +
-                    "分离不关闭 Explorer。退出前会恢复所有窗口。\n" +
-                    "实验性嵌入尚不保证强杀 / 崩溃安全，请先用无重要操作的窗口测试。"
-            });
-            var footer = new Panel { Dock = DockStyle.Bottom, Height = 30 };
-            var diagnostic = new Button { Text = "保存诊断…", Dock = DockStyle.Right, Width = 110 };
+            content.Controls.Add(new WelcomePanel(() => newTab.PerformClick(), () => addWindows.PerformClick()));
+            var footer = new Panel { Dock = DockStyle.Bottom, Height = 24, BackColor = HostTheme.Canvas };
+            var diagnostic = new IconButton(UiGlyph.Diagnostics, "保存诊断…") { Dock = DockStyle.Right, Width = 32 };
+            chromeTips.SetToolTip(diagnostic, "保存诊断日志");
             diagnostic.Click += (_, __) => ExportDiagnostics();
-            status.Dock = DockStyle.Fill; status.AutoEllipsis = true; status.Padding = new Padding(8, 4, 0, 0);
+            status.Dock = DockStyle.Fill; status.AutoEllipsis = true; status.Padding = new Padding(10, 2, 0, 0); status.ForeColor = Color.FromArgb(100, 113, 133);
             footer.Controls.Add(status); footer.Controls.Add(diagnostic);
-            Controls.Add(content); Controls.Add(tabs); Controls.Add(toolbar); Controls.Add(footer);
+            Controls.Add(content); Controls.Add(toolbar); Controls.Add(footer);
+            InitializeChrome();
             content.Resize += (_, __) => LayoutCurrent();
             LocationChanged += (_, __) => LayoutCurrent();
             Resize += (_, __) =>
@@ -112,14 +97,14 @@ namespace ExplorerTabHost.App
                 if (closing || modalDepth > 0 || OwnedForms.Any(f => f.Visible)) return;
                 RunSafely("激活窗口失败", () => controller.LayoutActive(CurrentBounds(), true));
             };
-            FormClosing += OnClosing;
+            FormClosing += OnClosingWithSession;
             Shown += (_, __) =>
             {
                 using (var process = Process.GetCurrentProcess())
                     log.Write($"Host started; version={typeof(MainForm).Assembly.GetName().Version}; PID={process.Id}; OS={Environment.OSVersion}; x64={Environment.Is64BitProcess}; executable={process.MainModule?.FileName}; DPI={NativeWindowApi.DescribeDpi(content.Handle)}");
                 try
                 {
-                    keyboard = new TabKeyboardHook(QueueShortcut, QueueNewTab);
+                    keyboard = new TabKeyboardHook(QueueShortcut, QueueNewTab, QueueCommand);
 
                     SyncShortcutScope();
                 }
@@ -131,6 +116,7 @@ namespace ExplorerTabHost.App
                 }
                 monitor.Start();
                 presentation.Start();
+                ShowSessionOffer();
             };
             monitor.Interval = 1500;
             monitor.Tick += (_, __) => PollWindows();
@@ -142,6 +128,7 @@ namespace ExplorerTabHost.App
                 Bounds = SettingsLayoutPolicy.Restore(settings.Bounds, Screen.AllScreens.Select(s => s.WorkingArea).ToArray(), Bounds);
             }
             if (settings.Maximized) WindowState = FormWindowState.Maximized;
+            InitializeWorkspaceUi(toolbar);
             UpdateStatus();
         }
 
@@ -160,18 +147,19 @@ namespace ExplorerTabHost.App
 
         private async Task CreateTabAsync(WindowSession? source)
         {
-            if (closing || IsDisposed || creation != null || explorerTabs.IsBusy || modalDepth > 0 || tabs.IsInteracting) return;
+            if (closing || IsDisposed || creation != null || workspaceOperation != null || exitPreparing || explorerTabs.IsBusy || modalDepth > 0 || tabs.IsInteracting) return;
             if (source != null && (!controller.Sessions.Contains(source) || source.State != SessionState.Attached)) return;
             var request = new CancellationTokenSource(); creation = request;
             request.CancelAfter(15000);
             HostingMode requestedMode = SelectedMode;
             SetCreationControls(true);
-            status.Text = source == null ? "正在新建 Explorer；可取消，失败保留独立窗口…" : "正在读取并复制此标签的目录…";
+            status.Text = source == null ? "正在后台准备新标签；可取消…" : "正在读取并复制此标签的目录…";
             log.Write($"Create requested; duplicate={source != null}; mode={requestedMode}; source=0x{source?.Identity.Handle ?? 0:X}");
             try
             {
-                var result = await explorerTabs.CreateAsync(settings.NewTabDirectory, source?.Identity,
-                    controller.Sessions.Select(s => s.Identity.Handle).ToArray(), request.Token);
+                using (var result = await explorerTabs.CreateAsync(settings.NewTabDirectory, source?.Identity,
+                    controller.Sessions.Select(s => s.Identity.Handle).ToArray(), request.Token))
+                {
                 // Do not rebuild a popup/drag or race a modal dialog when the asynchronous result arrives.
                 while (modalDepth > 0 || tabs.IsInteracting) await Task.Delay(50, request.Token);
                 request.Token.ThrowIfCancellationRequested();
@@ -179,6 +167,7 @@ namespace ExplorerTabHost.App
                 if (SelectedMode != requestedMode) throw new InvalidOperationException("挂载模式已改变，新建窗口保持独立。");
                 AttachCreated(result, requestedMode);
                 log.Write($"Create attached HWND=0x{result.Identity.Handle:X}; directory={result.Directory}");
+                }
             }
             catch (OperationCanceledException)
             {
@@ -201,7 +190,7 @@ namespace ExplorerTabHost.App
         private void AttachCreated(CreatedExplorer result, HostingMode requestedMode)
         {
             WindowSession session;
-            try { session = controller.Attach(result.Identity, content.Handle, requestedMode, CurrentBounds()); }
+            try { session = controller.Attach(result.Identity, content.Handle, requestedMode, CurrentBounds(), result.DeferredPresentation); }
             catch { RefreshTabs(); throw; } // Partial rollback may leave a recovery entry that must stay visible.
             try { controller.Activate(session, CurrentBounds()); }
             catch
@@ -210,16 +199,20 @@ namespace ExplorerTabHost.App
                 catch (Exception rollback) { log.Write("New tab activation rollback failed; recovery retained", rollback); }
                 RefreshTabs(); throw;
             }
+            result.MarkAttached();
+            directoryCache[session] = result.Directory;
+            workspaceTouched = true;
             presentation.Track(session.Identity, "explicit-create");
             RefreshTabs(); tabs.Reveal(session);
         }
 
         private void SetCreationControls(bool pending)
         {
-            newTab.Enabled = !pending && !explorerTabs.IsBusy;
-            addWindows.Enabled = !pending; preferences.Enabled = !pending;
-            cancelCreation.Visible = pending;
-            mode.Enabled = !pending && controller.Sessions.Count == 0;
+            newTab.Enabled = !pending && workspaceOperation == null && !explorerTabs.IsBusy;
+            addWindows.Enabled = !pending && workspaceOperation == null; preferences.Enabled = !pending && workspaceOperation == null;
+            cancelCreation.Visible = pending || workspaceOperation != null;
+            foreach (WelcomePanel welcome in content.Controls) welcome.SetPending(pending || workspaceOperation != null || explorerTabs.IsBusy);
+            mode.Enabled = !pending && workspaceOperation == null && controller.Sessions.Count == 0;
             SyncShortcutScope();
         }
 
@@ -248,6 +241,7 @@ namespace ExplorerTabHost.App
         }
         private void ShowSettings()
         {
+            if (workspaceOperation != null || exitPreparing) return;
             using (EnterModal())
             using (var dialog = new SettingsDialog(CurrentSettings(), controller.Sessions.Count > 0, settingsStore != null))
             {
@@ -261,7 +255,7 @@ namespace ExplorerTabHost.App
                 throw new InvalidOperationException("先分离全部窗口再修改挂载模式。");
             settingsStore?.Save(candidate); // Commit storage first; failed saves never partially update live UI.
             settings = candidate.Copy(); mode.SelectedIndex = settings.Mode == HostingMode.Embedded ? 0 : 1;
-            shortcuts.Checked = settings.ShortcutsEnabled && shortcuts.Enabled; SyncShortcutScope(); UpdateStatus();
+            shortcuts.Checked = settings.ShortcutsEnabled && shortcuts.Enabled; tabs.ConfigureLayout(settings.WrapTabs, settings.MaximumTabRows); UpdateToolbarHints(); ShowSessionOffer(); SyncShortcutScope(); UpdateStatus();
             log.Write("Settings applied; persistent=" + (settingsStore != null));
         }
         private void SaveSettingsOnExit()
@@ -278,6 +272,7 @@ namespace ExplorerTabHost.App
 
         private void AddWindows()
         {
+            if (workspaceOperation != null || exitPreparing) return;
             using (EnterModal())
             using (var picker = new WindowPicker(controller.Sessions.Select(s => s.Identity.Handle)))
             {
@@ -295,6 +290,7 @@ namespace ExplorerTabHost.App
                 {
                     var session = controller.Attach(identity, content.Handle, SelectedMode, CurrentBounds());
                     controller.Activate(session, CurrentBounds());
+                    workspaceTouched = true;
                     log.Write("Attached " + identity + "; mode=" + SelectedMode);
                     presentation.Track(identity, "attach");
                 }
@@ -325,10 +321,12 @@ namespace ExplorerTabHost.App
 
         private void Detach(WindowSession session)
         {
+            if (workspaceOperation != null || exitPreparing) return;
             RunSafely("分离失败，窗口恢复记录仍保留", () =>
             {
                 var preferred = TabManagementPolicy.Successor(controller.Sessions, controller.Active, new[] { session });
                 controller.Detach(session);
+                workspaceTouched = true;
                 log.Write("Detached " + session.Identity);
                 presentation.Track(session.Identity, "detach");
                 EnsureActive(true, preferred);
@@ -338,7 +336,9 @@ namespace ExplorerTabHost.App
 
         private void DetachAll(bool forExit)
         {
+            if (!forExit && (workspaceOperation != null || exitPreparing)) return;
             var identities = controller.Sessions.Select(s => s.Identity).ToArray();
+            workspaceTouched |= identities.Length > 0;
             var errors = controller.DetachAll();
             foreach (var identity in identities) presentation.Track(identity, "detach-all");
             RefreshTabs();
@@ -366,9 +366,11 @@ namespace ExplorerTabHost.App
             SetCreationControls(creation != null);
             try
             {
+                var beforePrune = controller.Sessions.ToArray();
                 int previousCount = controller.Sessions.Count;
                 var errors = controller.PruneLost();
                 foreach (string error in errors) log.Write("Prune failed: " + error);
+                CompleteClosedTabs(beforePrune);
                 bool changed = previousCount != controller.Sessions.Count;
                 foreach (var session in controller.Sessions)
                 {
@@ -379,6 +381,7 @@ namespace ExplorerTabHost.App
                 EnsureActive();
                 SyncShortcutScope();
                 if (changed) RefreshTabs();
+                MaybeAutosave();
             }
             catch (Exception error) { log.Write("Monitor failed", error); }
         }
@@ -390,7 +393,8 @@ namespace ExplorerTabHost.App
             try
             {
                 tabs.Render(controller.Sessions, controller.Active, CreateTabMenu);
-                mode.Enabled = controller.Sessions.Count == 0 && creation == null;
+                foreach (WelcomePanel welcome in content.Controls) welcome.Visible = controller.Sessions.Count == 0;
+                mode.Enabled = controller.Sessions.Count == 0 && creation == null && workspaceOperation == null;
                 UpdateStatus();
                 SyncShortcutScope();
             }
@@ -399,9 +403,11 @@ namespace ExplorerTabHost.App
 
         private void MoveTab(WindowSession session, int index)
         {
+            if (workspaceOperation != null || exitPreparing) return;
             RunSafely("标签排序失败", () =>
             {
                 controller.MoveTab(session, index);
+                workspaceTouched = true;
                 log.Write($"Tab reordered HWND=0x{session.Identity.Handle:X}; index={index}; native-mutations=none");
                 RefreshTabs();
             });
@@ -410,29 +416,35 @@ namespace ExplorerTabHost.App
         private ContextMenuStrip CreateTabMenu(WindowSession session)
         {
             var menu = new ContextMenuStrip();
+            HostTheme.StyleMenu(menu);
             int index = controller.Sessions.ToList().IndexOf(session);
+            var close = menu.Items.Add("关闭此标签的 Explorer", null, (_, __) => QueueUi(() => CloseTabAsync(session)));
+            close.Enabled = session.State == SessionState.Attached && session.CloseRequestedUtc == null && workspaceOperation == null;
+            close.ForeColor = Color.FromArgb(166, 49, 49);
+            menu.Items.Add(new ToolStripSeparator());
             var duplicate = menu.Items.Add("复制此标签的目录…", null, (_, __) => QueueCreateFromMenu(session));
             duplicate.Enabled = creation == null && !explorerTabs.IsBusy && session.State == SessionState.Attached;
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("重命名标签…", null, (_, __) => RenameTab(session));
+            menu.Items.Add("收藏此目录…", null, (_, __) => QueueUi(() => AddFavoriteAsync(session)));
+            menu.Items.Add("重命名标签…", null, (_, __) => QueueMenuAction(() => RenameTab(session)));
             var reset = menu.Items.Add("恢复目录名称", null, (_, __) =>
-                RunSafely("恢复标签名称失败", () => { controller.ResetTabTitle(session); RefreshTabs(); }));
+                QueueMenuAction(() => RunSafely("恢复标签名称失败", () => { controller.ResetTabTitle(session); workspaceTouched = true; RefreshTabs(); })));
             reset.Enabled = session.CustomTitle != null;
             menu.Items.Add(new ToolStripSeparator());
-            var left = menu.Items.Add("向左移动", null, (_, __) => MoveTab(session, controller.Sessions.ToList().IndexOf(session) - 1));
-            var right = menu.Items.Add("向右移动", null, (_, __) => MoveTab(session, controller.Sessions.ToList().IndexOf(session) + 1));
+            var left = menu.Items.Add("向左移动", null, (_, __) => QueueMenuAction(() => MoveTab(session, controller.Sessions.ToList().IndexOf(session) - 1)));
+            var right = menu.Items.Add("向右移动", null, (_, __) => QueueMenuAction(() => MoveTab(session, controller.Sessions.ToList().IndexOf(session) + 1)));
             left.Enabled = index > 0; right.Enabled = index >= 0 && index < controller.Sessions.Count - 1;
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("分离为独立 Explorer（不关闭）", null, (_, __) => Detach(session));
-            var others = menu.Items.Add("分离其他标签（不关闭）", null, (_, __) => DetachTabs(session, TabDetachScope.Others));
-            var toRight = menu.Items.Add("分离右侧标签（不关闭）", null, (_, __) => DetachTabs(session, TabDetachScope.ToRight));
+            menu.Items.Add("分离为独立 Explorer（不关闭）", null, (_, __) => QueueMenuAction(() => Detach(session)));
+            var others = menu.Items.Add("分离其他标签（不关闭）", null, (_, __) => QueueMenuAction(() => DetachTabs(session, TabDetachScope.Others)));
+            var toRight = menu.Items.Add("分离右侧标签（不关闭）", null, (_, __) => QueueMenuAction(() => DetachTabs(session, TabDetachScope.ToRight)));
             others.Enabled = controller.Sessions.Count > 1;
             toRight.Enabled = index >= 0 && index < controller.Sessions.Count - 1;
-            menu.Items.Add("分离全部标签（不关闭）", null, (_, __) => DetachAll(false));
+            menu.Items.Add("分离全部标签（不关闭）", null, (_, __) => QueueMenuAction(() => DetachAll(false)));
             IDisposable? interaction = null;
             menu.Opening += (_, e) =>
             {
-                if (closing || !controller.Sessions.Contains(session)) { e.Cancel = true; return; }
+                if (closing || exitPreparing || workspaceOperation != null || !controller.Sessions.Contains(session)) { e.Cancel = true; return; }
                 interaction = EnterModal(); // Disable shortcuts; grouped windows must not cover the popup.
             };
             menu.Closed += (_, __) => { interaction?.Dispose(); interaction = null; SyncShortcutScope(); };
@@ -442,6 +454,7 @@ namespace ExplorerTabHost.App
 
         private void RenameTab(WindowSession session)
         {
+            if (workspaceOperation != null || exitPreparing) return;
             using (EnterModal())
             using (var dialog = new RenameTabDialog(session.DisplayTitle))
             {
@@ -449,6 +462,7 @@ namespace ExplorerTabHost.App
                 RunSafely("标签重命名失败", () =>
                 {
                     controller.RenameTab(session, dialog.TabTitle);
+                    workspaceTouched = true;
                     log.Write($"Tab renamed HWND=0x{session.Identity.Handle:X}; native-mutations=none");
                     RefreshTabs();
                 });
@@ -457,6 +471,7 @@ namespace ExplorerTabHost.App
 
         private void DetachTabs(WindowSession anchor, TabDetachScope scope)
         {
+            if (workspaceOperation != null || exitPreparing) return;
             RunSafely("批量分离失败，窗口恢复记录仍保留", () =>
             {
                 var targets = TabManagementPolicy.Select(controller.Sessions, anchor, scope);
@@ -473,8 +488,8 @@ namespace ExplorerTabHost.App
         }
 
         private void SyncShortcutScope() => keyboard?.UpdateScope(IsHandleCreated ? Handle : IntPtr.Zero,
-            controller.Active, shortcuts.Checked && !closing && modalDepth == 0 && !tabs.IsInteracting && WindowState != FormWindowState.Minimized,
-            controller.Sessions.Count(s => s.State == SessionState.Attached) >= 2, creation == null && !explorerTabs.IsBusy);
+            controller.Active, shortcuts.Checked && !closing && !exitPreparing && workspaceOperation == null && modalDepth == 0 && !tabs.IsInteracting && WindowState != FormWindowState.Minimized,
+            controller.Sessions.Count(s => s.State == SessionState.Attached) >= 2, creation == null && workspaceOperation == null && !explorerTabs.IsBusy, settings.KeyBindings);
 
         private void QueueShortcut(int direction)
         {
@@ -500,10 +515,10 @@ namespace ExplorerTabHost.App
 
         private void UpdateStatus()
         {
-            if (creation != null) return;
+            if (creation != null || workspaceOperation != null) return;
             status.Text =
             $"{controller.Sessions.Count} 个标签 · {(SelectedMode == HostingMode.Embedded ? "实验性嵌入" : "顶层分组：保留 Explorer 任务栏项")}" +
-            " · Ctrl+T 新建 / Ctrl+Tab 切换 · 右键复制目录 / 管理 · 分离不关闭";
+            " · 退出 / 分离会恢复窗口";
         }
 
         private void OnClosing(object? sender, FormClosingEventArgs e)
@@ -518,7 +533,7 @@ namespace ExplorerTabHost.App
             if (controller.Sessions.Count > 0)
             {
                 e.Cancel = true;
-                closing = false; modalDepth--; monitor.Start();
+                closing = false; exitCaptureDone = false; modalDepth--; monitor.Start();
                 RefreshTabs();
                 ReportError("还有窗口没有完成恢复，已阻止退出。请重试“分离全部”。", new InvalidOperationException(string.Join("\n", errors)));
             }
@@ -545,7 +560,8 @@ namespace ExplorerTabHost.App
         private void ExportDiagnostics()
         {
             // Capture before a modal dialog changes visibility in grouped mode.
-            string windowState = presentation.Snapshot("user-export-before-dialog", discoverStandalone: true);
+            string windowState = presentation.Snapshot("user-export-before-dialog", discoverStandalone: true) +
+                Environment.NewLine + $"Host UI: version={typeof(MainForm).Assembly.GetName().Version} dpi={DeviceDpi} state={WindowState} bounds={Bounds} client={ClientRectangle} padding={Padding} chrome={chrome?.Bounds} toolbar={commandToolbar?.Bounds} content={content.Bounds} sessionOfferVisible={sessionOffer.Visible} tabWrap={tabs.WrapContents} tabHeight={tabs.Height} horizontalScroll={tabs.HorizontalScroll.Visible} verticalScroll={tabs.VerticalScroll.Visible}";
             using (EnterModal())
             using (var dialog = new SaveFileDialog
             {
@@ -584,6 +600,7 @@ namespace ExplorerTabHost.App
             return new ModalScope(() =>
             {
                 modalDepth--;
+                if (disposingUi || Disposing || IsDisposed) return;
                 SyncShortcutScope();
                 if (modalDepth != 0 || closing) return;
                 try
@@ -598,8 +615,16 @@ namespace ExplorerTabHost.App
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { creation?.Cancel(); keyboard?.Dispose(); monitor.Dispose(); presentation.Dispose(); }
+            if (disposing)
+            {
+                disposingUi = true;
+                nativeMenuScope?.Dispose(); nativeMenuScope = null;
+                foreach (var close in closeReading.Values.ToArray()) close.Cancel();
+                workspaceOperation?.Cancel(); creation?.Cancel(); keyboard?.Dispose(); monitor.Dispose();
+                DisposeManagedMenus(); presentation.Dispose(); chromeTips.Dispose();
+            }
             base.Dispose(disposing);
+            if (disposing) { applicationIcon?.Dispose(); applicationIcon = null; }
         }
         private sealed class ModalScope : IDisposable
         {

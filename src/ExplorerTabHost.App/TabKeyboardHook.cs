@@ -16,11 +16,12 @@ namespace ExplorerTabHost.App
     {
         private readonly Action<int> switchTab;
         private readonly Action createTab;
-        private NewTabShortcutPolicy newTabPolicy = new NewTabShortcutPolicy();
+        private HostShortcutPolicy actionPolicy = new HostShortcutPolicy();
+        private readonly Action<HostCommand>? command;
         private readonly Thread thread;
         private readonly TaskCompletionSource<Exception?> ready = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly HookCallback callback;
-        private TabShortcutPolicy policy = new TabShortcutPolicy();
+
         private Control? dispatcher;
         private ApplicationContext? context;
         private IntPtr hook;
@@ -28,9 +29,9 @@ namespace ExplorerTabHost.App
         private bool leftControl, rightControl, leftShift, rightShift, leftAlt, rightAlt, leftWin, rightWin;
         private int disposeRequested;
 
-        public TabKeyboardHook(Action<int> switchTab, Action createTab)
+        public TabKeyboardHook(Action<int> switchTab, Action createTab, Action<HostCommand>? command = null)
         {
-            this.switchTab = switchTab; this.createTab = createTab;
+            this.switchTab = switchTab; this.createTab = createTab; this.command = command;
             callback = OnKey;
             thread = new Thread(Pump) { IsBackground = true, Name = "ExplorerTabHost keyboard hook" };
             thread.SetApartmentState(ApartmentState.STA);
@@ -49,11 +50,11 @@ namespace ExplorerTabHost.App
             }
         }
 
-        public void UpdateScope(IntPtr host, WindowSession? active, bool enabled, bool canSwitch = true, bool canCreate = false)
+        public void UpdateScope(IntPtr host, WindowSession? active, bool enabled, bool canSwitch = true, bool canCreate = false, System.Collections.Generic.IReadOnlyList<HostShortcut>? bindings = null)
         {
             Volatile.Write(ref scope, enabled && host != IntPtr.Zero
                 ? new Scope(host, active?.State == SessionState.Attached ? active.Identity.Hwnd : IntPtr.Zero,
-                    active?.Identity.ProcessId ?? 0, active?.Identity.ThreadId ?? 0, canSwitch && active?.State == SessionState.Attached, canCreate)
+                    active?.Identity.ProcessId ?? 0, active?.Identity.ThreadId ?? 0, canSwitch && active?.State == SessionState.Attached, canCreate, bindings)
                 : Scope.Disabled);
         }
 
@@ -92,8 +93,7 @@ namespace ExplorerTabHost.App
                     leftShift = IsDown(0xA0); rightShift = IsDown(0xA1);
                     leftAlt = IsDown(0xA4); rightAlt = IsDown(0xA5);
                     leftWin = IsDown(0x5B); rightWin = IsDown(0x5C);
-                    newTabPolicy = new NewTabShortcutPolicy(IsDown(0x54));
-                    policy = new TabShortcutPolicy(IsDown(9)); // Do not reinterpret a Tab already held during startup.
+                    actionPolicy = new HostShortcutPolicy(System.Linq.Enumerable.Where(HostShortcutPolicy.SupportedKeys, IsDown));
                     try
                     {
                         hook = SetWindowsHookEx(13, callback, GetModuleHandle(null), 0); // WH_KEYBOARD_LL
@@ -142,22 +142,19 @@ namespace ExplorerTabHost.App
                         case 0x5C: rightWin = down; break;
                     }
                 }
-                if (key.VirtualKey != 9 && key.VirtualKey != 0x54) return CallNextHookEx(hook, code, message, data);
                 var current = Volatile.Read(ref scope);
-                if (key.VirtualKey == 9)
+                int modifiers = ((leftControl || rightControl) ? 1 : 0) | ((leftShift || rightShift) ? 2 : 0) |
+                    ((leftAlt || rightAlt) ? 4 : 0) | ((leftWin || rightWin) ? 8 : 0);
+                var decision = actionPolicy.Handle(key.VirtualKey, down, injected, modifiers, Eligible(current), current.CanCreate,
+                    current.CanSwitch, current.Active != IntPtr.Zero, current.Bindings);
+                if (decision.Command != HostCommand.None)
                 {
-                    var decision = policy.Handle(9, down, injected, leftControl || rightControl,
-                        leftShift || rightShift, leftAlt || rightAlt, current.CanSwitch && Eligible(current));
-                    if (decision.Direction != 0) switchTab(decision.Direction);
-                    if (decision.Suppress) return new IntPtr(1);
+                    if (command != null) command(decision.Command);
+                    else if (decision.Command == HostCommand.NewTab) createTab();
+                    else if (decision.Command == HostCommand.NextTab || decision.Command == HostCommand.NextPage) switchTab(1);
+                    else if (decision.Command == HostCommand.PreviousTab || decision.Command == HostCommand.PreviousPage) switchTab(-1);
                 }
-                else
-                {
-                    var decision = newTabPolicy.Handle(0x54, down, injected, leftControl || rightControl,
-                        leftShift || rightShift, leftAlt || rightAlt || leftWin || rightWin, current.CanCreate && Eligible(current));
-                    if (decision.Create) createTab();
-                    if (decision.Suppress) return new IntPtr(1);
-                }
+                if (decision.Suppress) return new IntPtr(1);
             }
             catch { /* Never allow exceptions to cross the native hook boundary. */ }
             return CallNextHookEx(hook, code, message, data);
@@ -188,8 +185,9 @@ namespace ExplorerTabHost.App
             public uint ThreadId { get; }
             public bool CanSwitch { get; }
             public bool CanCreate { get; }
-            public Scope(IntPtr host, IntPtr active, int pid, uint tid, bool canSwitch = false, bool canCreate = false)
-            { Host = host; Active = active; ProcessId = pid; ThreadId = tid; CanSwitch = canSwitch; CanCreate = canCreate; }
+            public System.Collections.Generic.IReadOnlyList<HostShortcut> Bindings { get; }
+            public Scope(IntPtr host, IntPtr active, int pid, uint tid, bool canSwitch = false, bool canCreate = false, System.Collections.Generic.IReadOnlyList<HostShortcut>? bindings = null)
+            { Host = host; Active = active; ProcessId = pid; ThreadId = tid; CanSwitch = canSwitch; CanCreate = canCreate; Bindings = bindings == null ? HostShortcutCatalog.Defaults() : System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Select(bindings, b => b.Copy())); }
         }
         [StructLayout(LayoutKind.Sequential)]
         private struct KeyboardData

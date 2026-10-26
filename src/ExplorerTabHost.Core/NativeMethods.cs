@@ -46,6 +46,7 @@ namespace ExplorerTabHost.Core
         [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
         [DllImport("user32.dll")]
         internal static extern IntPtr GetParent(IntPtr hwnd);
+        [DllImport("user32.dll")] internal static extern uint GetDpiForWindow(IntPtr hwnd);
         [DllImport("user32.dll")]
         internal static extern IntPtr GetWindow(IntPtr hwnd, uint command);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]

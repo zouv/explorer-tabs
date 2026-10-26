@@ -1,9 +1,10 @@
-﻿param(
-    [string]$OutputDirectory = "dist\v0.4.1-release",
+param(
+    [string]$OutputDirectory = "dist\v0.6.1-release",
     [switch]$NativeSmoke,
     [switch]$CrossProcessSmoke,
     [switch]$TabUiSmoke,
-    [switch]$CreationUiSmoke
+    [switch]$CreationUiSmoke,
+    [switch]$WorkspaceUiSmoke
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -48,6 +49,10 @@ if ($TabUiSmoke) {
 if ($CreationUiSmoke) {
     & $tests --creation-ui-smoke
     if ($LASTEXITCODE -ne 0) { throw 'Creation UI smoke failed.' }
+}
+if ($WorkspaceUiSmoke) {
+    & $tests --workspace-ui-smoke
+    if ($LASTEXITCODE -ne 0) { throw 'Workspace UI smoke failed.' }
 }
 $source = Join-Path $root 'src\ExplorerTabHost.App\bin\Release\net48'
 New-Item -ItemType Directory -Force -Path $destination | Out-Null

@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -28,11 +28,16 @@ namespace ExplorerTabHost.Tests
                 { RenderUi(args[1], args.Length == 3 ? int.Parse(args[2]) : (int?)null, true); return 0; }
                 if (args.Length == 2 && args[0] == "--render-rename") { RenderRename(args[1]); return 0; }
                 if (args.Length == 2 && args[0] == "--render-settings") { RenderSettings(args[1]); return 0; }
-                if (args.Contains("--creation-ui-smoke")) CreationUiSmoke();
+                if (args.Length >= 2 && args[0] == "--render-workspace") { RenderWorkspace(args[1], args.Length == 3 ? int.Parse(args[2]) : 1100); return 0; }
+                if (args.Length == 2 && args[0] == "--render-picker") { RenderPicker(args[1]); return 0; }
+                if (args.Length == 2 && args[0] == "--render-settings-keys") { RenderSettingsKeys(args[1]); return 0; }
+                if (args.Contains("--workspace-ui-smoke")) { WorkspaceUiSmoke(); ChromeUiSmoke(); }
+                else if (args.Contains("--creation-ui-smoke")) CreationUiSmoke();
+                else if (args.Contains("--chrome-ui-smoke")) ChromeUiSmoke();
                 else if (args.Contains("--tab-ui-smoke")) TabUiSmoke();
                 else if (args.Contains("--cross-process-smoke")) CrossProcessSmoke();
                 else if (args.Contains("--native-smoke")) NativeSmoke();
-                else { UnitTests(); FeatureUnitTests(); ShellInteropTests(); }
+                else { UnitTests(); FeatureUnitTests(); DeferredCreationTests(); ShellInteropTests(); WorkspaceUnitTests(); }
                 Console.WriteLine($"PASS: {count} checks. No existing Explorer window was modified.");
                 return 0;
             }
@@ -519,15 +524,22 @@ namespace ExplorerTabHost.Tests
                 Refresh(); form.Width = 720;
                 typeof(Control).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, new object[] { 2, true });
                 form.CreateControl(); form.PerformLayout();
-                Check(strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible &&
+                Check(!strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible &&
                     strip.Controls.Cast<Control>().All(c => c.Top >= 0 && c.Bottom <= strip.ClientSize.Height),
-                    "minimum-width overflow keeps the entire tab row visible with horizontal-only scrolling");
+                    "short adaptive titles fit the minimum-width host without an unnecessary scrollbar");
+                foreach (var session in host.Sessions) host.RenameTab(session, "用于检查完整标题溢出与滚动的很长的项目目录名称 · " + session.Identity.Handle);
+                Refresh(); form.PerformLayout();
+                Check(strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible &&
+                    strip.Controls.Cast<Control>().All(c => c.Bottom <= strip.ClientSize.Height),
+                    "long-title overflow keeps the entire tab row visible with horizontal-only scrolling");
                 Call("Reveal", fourth);
                 Check(ButtonFor(fourth).Left >= 0 && ButtonFor(fourth).Right <= strip.ClientSize.Width,
                     "revealing the last tab scrolls it fully into the visible strip");
                 int offset = -strip.AutoScrollPosition.X; Refresh();
                 Check(-strip.AutoScrollPosition.X == offset, "metadata redraw preserves horizontal scroll position");
-                strip.AutoScrollPosition = Point.Empty;
+                foreach (var session in host.Sessions)
+                { if (session == first) host.RenameTab(session, "常用 & 项目目录"); else host.ResetTabTitle(session); }
+                Refresh(); strip.AutoScrollPosition = Point.Empty;
                 var clickButton = ButtonFor(third);
                 clickButton.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(clickButton, new object[] { EventArgs.Empty });
                 Check(host.Active == second && !clickButton.IsDisposed, "tab selection is queued until the mouse message has completed");
@@ -554,12 +566,13 @@ namespace ExplorerTabHost.Tests
                 Check(Call("EndPointer", button, MouseButtons.Left, new Point(21, 15)) == null && !Interacting(),
                     "ordinary click release never produces a reorder request");
                 Call("BeginPointer", button, MouseButtons.Left, new Point(20, 15));
-                Call("MovePointer", button, new Point(450, 15));
+                var reorderPoint = new Point(ButtonFor(second).Left + ButtonFor(second).Width / 2 + 1, 15);
+                Call("MovePointer", button, reorderPoint);
                 Check((bool)Call("IsDragging", button)! && api.Events.Count == 0 && store.Writes == writes,
                     "sorting preview does not activate, reparent or restore any window");
                 button.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(button, new object[] { EventArgs.Empty });
                 Check(host.Active == second && api.Events.Count == 0, "dragging button suppresses Click even when WinForms fires it before MouseUp");
-                var move = Call("EndPointer", button, MouseButtons.Left, new Point(450, 15));
+                var move = Call("EndPointer", button, MouseButtons.Left, reorderPoint);
                 Check(move != null && !Interacting() && host.Sessions[0] == first, "drop finishes gesture without changing model before request is published");
                 var oldMenu = button.ContextMenuStrip;
                 Call("PublishMove", move!);
@@ -577,19 +590,23 @@ namespace ExplorerTabHost.Tests
                 Check(!Interacting() && Call("EndPointer", button, MouseButtons.Left, new Point(50, 15)) == null,
                     "cancelled sorting cannot publish a later drop");
                 button.ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "恢复目录名称").PerformClick();
+                Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
                 Check(first.CustomTitle == null && ButtonFor(first).Text == first.Title && api.Events.Count == 0,
                     "actual reset-name menu restores automatic directory label without touching Explorer");
                 ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "向左移动").PerformClick();
+                Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
                 Check(host.Sessions[0] == first && host.Active == second && api.Events.Count == 0,
                     "actual move-left menu reorders tabs without switching windows");
                 // Non-active right-click anchor must govern the batch; active tab is removed here.
                 ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离其他标签（不关闭）").PerformClick();
+                Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
                 Check(host.Sessions.Single() == first && host.Active == first && strip.Controls.Count == 1,
                     "actual other-tabs menu keeps its right-click anchor and selects it after active tab is detached");
                 Check(api.Events.Contains("restore:2") && api.Events.Contains("restore:3") && api.Events.Contains("restore:4") &&
                     !api.Events.Contains("restore:1"), "batch UI routes selected targets through existing safe restoration, not close commands");
                 api.Events.Clear();
                 ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离全部标签（不关闭）").PerformClick();
+                Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
                 Check(host.Sessions.Count == 0 && strip.Controls.Count == 0 && api.Events.SequenceEqual(new[] { "restore:1" }),
                     "actual all-tabs menu restores final window and leaves empty host");
             }
@@ -642,6 +659,7 @@ namespace ExplorerTabHost.Tests
         private static void NativeSmoke()
         {
             Console.WriteLine("Native smoke uses ONLY transparent windows created by this test process.");
+            EmbeddedChromeNativeSmoke();
             var taskbar = new FakeTaskbar();
             var warnings = new List<string>();
             var trace = new List<string>();

@@ -78,7 +78,7 @@
 
 
 - 技术栈：C# / WinForms / .NET Framework 4.8 / x64，无第三方 NuGet。
-- 构建/运行：手动运行 dist/v0.4.1-release/ExplorerTabHost.exe；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
+- 构建/运行：手动运行 dist/v0.6.1-release/ExplorerTabHost.exe；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
 - 代码风格：匹配现有风格（命名、目录约定、注释语言），改动小而聚焦。
 -
 
@@ -96,8 +96,8 @@
 
 ## 4. 验证（改完怎么确认没坏）
 
-- 改代码后至少：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke`（或 `构建 TreatWarningsAsErrors=true；bash check-docs.sh`）。
-- 能跑起来时：`手动运行 dist/v0.4.1-release/ExplorerTabHost.exe` 后实测；UI/交互改动尽量实跑确认。
+- 改代码后至少：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke`（或 `构建 TreatWarningsAsErrors=true；bash check-docs.sh`）。
+- 能跑起来时：`手动运行 dist/v0.6.1-release/ExplorerTabHost.exe` 后实测；UI/交互改动尽量实跑确认。
 - **文档体检（机械兜底）**：`sh check-docs.sh` —— 查占位符残留 / HANDOFF·ARCHITECTURE 体量 / CHANGELOG 疑似漏记。它只判「脚本能判的」；**语义漂移**（图谱↔代码是否对得上）仍需 `doc-audit`。建议接入 pre-commit / CI。
 
 ---
@@ -149,7 +149,7 @@
 > - **常规/结构性改动**（增删改函数·接口·链路·文件，或产生使用者可感知变化）：**走完下面全部 6 条，漏一项 = 未完成**。
 
 常规/结构性改动的完成清单：
-1. **代码**：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke` / 实测通过；满足 HANDOFF 里写的「完成定义」。
+1. **代码**：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` / 实测通过；满足 HANDOFF 里写的「完成定义」。
 2. **作用域**：本次只读/只改了任务范围内文件（没把无关代码拖进来）。
 3. **`ARCHITECTURE.md`**：改了结构 → 同步更新。
 4. **`CHANGELOG.md`**：有完结成果 → 记入 `[未发布]`。

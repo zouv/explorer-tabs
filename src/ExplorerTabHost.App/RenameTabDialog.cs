@@ -23,11 +23,11 @@ namespace ExplorerTabHost.App
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-            layout.Controls.Add(new Label { Text = "名称仅在本次宿主会话生效，最多 120 个字符。", Dock = DockStyle.Fill }, 0, 0);
+            layout.Controls.Add(new Label { Text = "名称随保存的会话 / 标签组保留，最多 120 个字符。", Dock = DockStyle.Fill }, 0, 0);
             layout.Controls.Add(name, 0, 1); layout.Controls.Add(error, 0, 2);
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
-            var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, AutoSize = true };
-            var ok = new Button { Text = "确定", AutoSize = true };
+            var cancel = new ActionButton("取消") { DialogResult = DialogResult.Cancel, Width = 90, Height = 30 };
+            var ok = new ActionButton("确定", true) { Width = 90, Height = 30 };
             ok.Click += (_, __) =>
             {
                 try { name.Text = TabManagementPolicy.NormalizeTitle(name.Text); DialogResult = DialogResult.OK; }

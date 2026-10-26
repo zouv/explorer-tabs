@@ -168,8 +168,10 @@ namespace ExplorerTabHost.Core
                 if (NativeMethods.GetParent(snapshot.Identity.Hwnd) != host)
                     throw new InvalidOperationException("SetParent 后父窗口校验失败。");
             }
-            Layout(snapshot, bounds);
             FrameChanged(snapshot.Identity.Hwnd);
+            Layout(snapshot, bounds);
+            if (snapshot.Mode == HostingMode.Embedded)
+                Trace($"Native: embedded.chrome HWND=0x{snapshot.Identity.Handle:X} titleInset={MeasureEmbeddedTitleInset(snapshot.Identity.Hwnd)} viewport=({bounds.X},{bounds.Y},{bounds.Width},{bounds.Height})");
             if (snapshot.Mode == HostingMode.Embedded)
                 UpdateTaskbar(snapshot, false);
             TraceState("attach.after", snapshot, true);
@@ -179,8 +181,47 @@ namespace ExplorerTabHost.Core
         {
             RequireMatch(snapshot.Identity);
             if (bounds.Width < 1 || bounds.Height < 1) return;
+            // The Windows 10 Ribbon can retain its own title band even with WS_CAPTION
+            // removed. Move only this embedded root through the parent viewport; never edit
+            // Explorer's Ribbon children, placement snapshot, or ordinary/grouped windows.
+            int inset = snapshot.Mode == HostingMode.Embedded && IsExplorer(snapshot.Identity)
+                ? MeasureEmbeddedTitleInset(snapshot.Identity.Hwnd) : 0;
+            bounds = EmbeddedViewportBounds(bounds, inset);
             Check(NativeMethods.SetWindowPos(snapshot.Identity.Hwnd, IntPtr.Zero, bounds.X, bounds.Y,
                 bounds.Width, bounds.Height, NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate), "SetWindowPos(layout)");
+        }
+
+        private static Rectangle EmbeddedViewportBounds(Rectangle bounds, int inset) =>
+            new Rectangle(bounds.X, bounds.Y - inset, bounds.Width, bounds.Height + inset);
+
+        private static int MeasureEmbeddedTitleInset(IntPtr hwnd)
+        {
+            // Fail open on unknown Explorer layouts: never guess a fixed title height.
+            if (!NativeMethods.GetClientRect(hwnd, out var client) || !NativeMethods.GetWindowRect(hwnd, out var root) ||
+                client.Right < 1 || root.Right - root.Left != client.Right || root.Bottom - root.Top != client.Bottom) return 0;
+            int dpi = (int)NativeMethods.GetDpiForWindow(hwnd);
+            int limit = Math.Max(80, (int)Math.Round(80 * Math.Max(96, dpi) / 96F));
+            int inset = 0, inspected = 0;
+            // Direct children only; do not enumerate shell file views or send cross-thread messages.
+            for (IntPtr child = NativeMethods.GetWindow(hwnd, 5); child != IntPtr.Zero && inspected++ < 256;
+                child = NativeMethods.GetWindow(child, 2)) // GW_CHILD / GW_HWNDNEXT
+            {
+                var name = new StringBuilder(128); NativeMethods.GetClassName(child, name, name.Capacity);
+                if (name.ToString() != "UIRibbonCommandBarDock" || !NativeMethods.GetWindowRect(child, out var ribbon)) continue;
+                int gap = ribbon.Top - root.Top;
+                if (gap <= 0 || gap > limit || ribbon.Bottom <= ribbon.Top || ribbon.Left != root.Left ||
+                    ribbon.Right != root.Right || ribbon.Bottom >= root.Bottom) continue;
+                // Horizontal top dock must contain the actual Ribbon command bar, not a side pane.
+                bool commandBar = false; int nestedCount = 0;
+                for (IntPtr nested = NativeMethods.GetWindow(child, 5); nested != IntPtr.Zero && nestedCount++ < 64;
+                    nested = NativeMethods.GetWindow(nested, 2))
+                {
+                    NativeMethods.GetClassName(nested, name, name.Capacity);
+                    if (name.ToString() == "UIRibbonCommandBar") { commandBar = true; break; }
+                }
+                if (commandBar && (inset == 0 || gap < inset)) inset = gap;
+            }
+            return inset;
         }
 
         public void Show(WindowSnapshot snapshot, bool visible, bool raise)

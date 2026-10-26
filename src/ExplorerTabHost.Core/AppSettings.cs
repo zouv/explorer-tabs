@@ -17,10 +17,15 @@ namespace ExplorerTabHost.Core
         [DataMember] public string NewTabDirectory { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         [DataMember] public NativeRect Bounds { get; set; }
         [DataMember] public bool Maximized { get; set; }
+        [DataMember] public bool WrapTabs { get; set; }
+        [DataMember] public int MaximumTabRows { get; set; } = 3;
+        [DataMember] public bool RememberSession { get; set; } = true;
+        [DataMember] public List<HostShortcut> KeyBindings { get; set; } = HostShortcutCatalog.Defaults();
         [OnDeserializing] private void Defaults(StreamingContext context)
-        { Version = 1; Mode = HostingMode.Embedded; ShortcutsEnabled = true; NewTabDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); }
+        { Version = 1; Mode = HostingMode.Embedded; ShortcutsEnabled = true; NewTabDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); MaximumTabRows = 3; RememberSession = true; KeyBindings = HostShortcutCatalog.Defaults(); }
         public AppSettings Copy() => new AppSettings { Version = Version, Mode = Mode, ShortcutsEnabled = ShortcutsEnabled,
-            NewTabDirectory = NewTabDirectory, Bounds = Bounds, Maximized = Maximized };
+            NewTabDirectory = NewTabDirectory, Bounds = Bounds, Maximized = Maximized, WrapTabs = WrapTabs, MaximumTabRows = MaximumTabRows,
+            RememberSession = RememberSession, KeyBindings = KeyBindings.Select(k => k.Copy()).ToList() };
     }
     public interface IAppSettingsStore
     {
@@ -60,6 +65,8 @@ namespace ExplorerTabHost.Core
             if (settings.Version != 1 || !Enum.IsDefined(typeof(HostingMode), settings.Mode))
                 throw new InvalidDataException("设置文件版本或挂载模式无效。");
             FolderTarget.Normalize(settings.NewTabDirectory);
+            if (settings.MaximumTabRows < 2 || settings.MaximumTabRows > 8) throw new InvalidDataException("多行标签上限必须为 2–8 行。");
+            HostShortcutCatalog.Validate(settings.KeyBindings);
         }
     }
     public static class SettingsLayoutPolicy

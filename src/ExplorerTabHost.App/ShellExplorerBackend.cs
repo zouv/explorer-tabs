@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -103,7 +103,7 @@ namespace ExplorerTabHost.App
         { Application.DoEvents(); cancellation.ThrowIfCancellationRequested(); System.Threading.Thread.Sleep(50); cancellation.ThrowIfCancellationRequested(); }
         public void Dispose() { if (initialized) CoUninitialize(); trace?.Invoke("Creation STA backend released"); }
         private static void Release(object? value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
-        private sealed class BrowserReference : ICreatedExplorerReference
+        private sealed class BrowserReference : ICreatedExplorerReference, IDeferredExplorerReference
         {
             private readonly IWebBrowser2Native browser;
             private readonly Action<string>? trace;
@@ -135,6 +135,28 @@ namespace ExplorerTabHost.App
                 }
                 finally { Marshal.FreeCoTaskMem(pidl); }
             }
+            public Action DeferPresentation(WindowIdentity identity)
+            {
+                var api = new NativeWindowApi();
+                if (browser.GetHWND() != identity.Handle || !api.Matches(identity) || GetParent(identity.Hwnd) != IntPtr.Zero)
+                    throw new InvalidOperationException("新建呈现目标已变化，不隐藏其他窗口。");
+                // Install recovery before the COM call: SetVisible can mutate and then throw.
+                Action restore = () =>
+                {
+                    try
+                    {
+                        if (!api.Matches(identity) || GetParent(identity.Hwnd) != IntPtr.Zero ||
+                            (GetWindowLongPtr(identity.Hwnd, -16).ToInt64() & 0x40000000L) != 0)
+                        { trace?.Invoke($"Creation independent recovery skipped; changed/attached HWND=0x{identity.Handle:X}"); return; }
+                        ShowWindow(identity.Hwnd, 4); // SW_SHOWNOACTIVATE; never activate, Quit or search.
+                        trace?.Invoke($"Creation independent recovery; HWND=0x{identity.Handle:X}");
+                    }
+                    catch (Exception error) { trace?.Invoke("Creation independent recovery failed; " + error); }
+                };
+                try { browser.SetVisible(false); trace?.Invoke($"Creation deferred presentation; HWND=0x{identity.Handle:X}"); }
+                catch { restore(); throw; }
+                return restore;
+            }
             public void Show() { trace?.Invoke("Creation show independent window"); browser.SetVisible(true); }
             public void Dispose() { Release(browser); } // Never Quit: a failed request must not close a user's window.
         }
@@ -144,6 +166,9 @@ namespace ExplorerTabHost.App
             [DispId(1610743808)] int Count { get; }
             [DispId(0)] [return: MarshalAs(UnmanagedType.IDispatch)] object Item([In, MarshalAs(UnmanagedType.Struct)] object index);
         }
+        [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr hwnd);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+        [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool ShowWindow(IntPtr hwnd, int command);
         [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsChild(IntPtr parent, IntPtr child);
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern int SHParseDisplayName(string name, IntPtr bindContext,
             out IntPtr pidl, uint attributes, out uint resultingAttributes);

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -10,17 +10,19 @@ namespace ExplorerTabHost.Core
     {
         private readonly IWindowApi windows;
         private readonly ISnapshotStore store;
+        private readonly IWindowCloser closer;
         private readonly List<WindowSession> sessions = new List<WindowSession>();
         public IReadOnlyList<WindowSession> Sessions => sessions.AsReadOnly();
         public WindowSession? Active { get; private set; }
 
-        public HostController(IWindowApi windows, ISnapshotStore store)
+        public HostController(IWindowApi windows, ISnapshotStore store, IWindowCloser? closer = null)
         {
             this.windows = windows;
             this.store = store;
+            this.closer = closer ?? new NativeWindowCloser();
         }
 
-        public WindowSession Attach(WindowIdentity identity, IntPtr host, HostingMode mode, Rectangle bounds)
+        public WindowSession Attach(WindowIdentity identity, IntPtr host, HostingMode mode, Rectangle bounds, bool restoreCreatedVisible = false)
         {
             if (sessions.Count >= 100) throw new InvalidOperationException("原型最多管理 100 个窗口。");
             if (sessions.Any(s => s.State != SessionState.Attached))
@@ -31,6 +33,14 @@ namespace ExplorerTabHost.Core
                 throw new InvalidOperationException("请先分离所有标签，再切换挂载模式。");
             var snapshot = windows.Capture(identity);
             windows.ValidateAttach(snapshot, host, mode);
+            if (restoreCreatedVisible)
+            {
+                // A freshly created hidden browser must become an ordinary visible window on detach/recovery.
+                snapshot.WasVisible = true;
+                var placement = snapshot.Placement;
+                if (placement.ShowCommand == 0) placement.ShowCommand = 1;
+                snapshot.Placement = placement;
+            }
             snapshot.HostHandle = host.ToInt64();
             snapshot.Mode = mode;
             var session = new WindowSession(snapshot);
@@ -121,6 +131,21 @@ namespace ExplorerTabHost.Core
             if (Active != null && Active.State == SessionState.Attached && windows.Matches(Active.Identity))
                 windows.Show(Active.Snapshot, visible, false);
         }
+
+        public void RequestClose(WindowSession session)
+        {
+            RequireSession(session);
+            if (session.State != SessionState.Attached || !windows.Matches(session.Identity))
+                throw new InvalidOperationException("目标标签已失效或需要恢复，未关闭。");
+            if (session.CloseRequestedUtc != null) return;
+            store.Save(sessions.Select(s => s.Snapshot).ToArray());
+            closer.RequestClose(session.Identity);
+            // Keep both the live session and durable journal until the HWND has actually disappeared.
+            session.CloseRequestedUtc = DateTime.UtcNow;
+        }
+
+        public void RetryClose(WindowSession session)
+        { RequireSession(session); session.CloseRequestedUtc = null; }
 
         public void Detach(WindowSession session)
         {
