@@ -4,7 +4,8 @@ param(
     [switch]$CrossProcessSmoke,
     [switch]$TabUiSmoke,
     [switch]$CreationUiSmoke,
-    [switch]$WorkspaceUiSmoke
+    [switch]$WorkspaceUiSmoke,
+    [switch]$TreatWarningsAsErrors
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -29,7 +30,9 @@ if (Test-Path -LiteralPath $targetExe) {
         }
     }
 }
-& dotnet build (Join-Path $root 'ExplorerTabs.sln') -c Release --nologo
+$buildArguments = @((Join-Path $root 'ExplorerTabs.sln'), '-c', 'Release', '--nologo')
+if ($TreatWarningsAsErrors) { $buildArguments += '-p:TreatWarningsAsErrors=true' }
+& dotnet build @buildArguments
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 $tests = Join-Path $root 'tests\ExplorerTabs.Tests\bin\Release\net48\ExplorerTabs.Tests.exe'
 & $tests

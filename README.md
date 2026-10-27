@@ -134,6 +134,20 @@ bash manager.sh package    # 打包
 bash manager.sh check-docs # 文档机械体检
 ```
 
+Windows 批处理入口（`build` / `test` / `package` / `run` 与 `manager.sh` 对应）：
+
+```bat
+build.bat    :: 构建 + 基础检查
+test.bat     :: 完整安全自动检查
+verify.bat   :: 警告即错误构建 + 完整安全检查 + 文档体检
+package.bat  :: 打包
+run.bat      :: 手动启动 dist\release\unpack（run.bat dev 启动开发快照）
+clean.bat    :: 清理 bin / obj / .runtime（保留 dist 与 artifacts）
+ci.bat       :: clean -> verify -> package
+```
+
+`clean.bat` 不会结束运行中的宿主；`run.bat` 仅用于你手动启动真实交互宿主。
+
 ## 打包
 
 ```bat

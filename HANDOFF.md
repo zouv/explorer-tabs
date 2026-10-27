@@ -2,7 +2,7 @@
 
 状态日期：2026-10-27；无进行中开发任务；0.8.0 已打包并上传 GitHub Release（v0.8.0）。
 源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 / 0.8.0 Release 均已上传。
-最后验证：2026-10-27 完整 `build.ps1` 安全测试通过（824 项：核心 443、原生 63、跨进程 7、标签 UI 38、创建 UI 38、工作空间 / 窗框 UI 235）；0.8.0 release / debug 包已由 `package.bat` 产出并上传：`dist/release/ExplorerTabs_0.8.0_x64-unpack.zip`、`dist/dev/ExplorerTabs_0.8.0_x64-unpack-debug.zip`、`dist/release/SHA256SUMS.txt`；`dist/release/unpack` 已刷新为 0.8.0。
+最后验证：2026-10-27 完整 `build.ps1` 安全测试通过（824 项：核心 443、原生 63、跨进程 7、标签 UI 38、创建 UI 38、工作空间 / 窗框 UI 235）；同日新增 `build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `ci.bat` 并实跑 build / test / clean / verify（`verify.bat` 含 TreatWarningsAsErrors 与 check-docs，全部通过）；0.8.0 release / debug 包已由 `package.bat` 产出并上传：`dist/release/ExplorerTabs_0.8.0_x64-unpack.zip`、`dist/dev/ExplorerTabs_0.8.0_x64-unpack-debug.zip`、`dist/release/SHA256SUMS.txt`；`dist/release/unpack` 已刷新为 0.8.0。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
 - 0.8.0 已发布：应用菜单“关于”移到最下并单独分组、“关闭并还原窗口”改为“关闭（分离所有窗口）”；“加入”按钮提示改为“加入窗口…”，候选项改为“加入【标题】窗口”并带悬浮说明；“选择要加入的…”改为“打开“加入”管理界面”；分离菜单四项改为窗口措辞；收藏菜单改为“收藏当前目录… / 收藏其他目录… / 保存当前标签组”，底部新增“打开“收藏”管理界面”（目录管理 + 组管理两页）；菜单快捷键统一靠右。请从 GitHub Release 下载或用 `dist/release/unpack` 实测，重点看长标题候选菜单宽度、快捷键对齐与管理弹窗操作。
@@ -15,6 +15,7 @@
 
 ## 接续入口与安全
 - 0.6.3 发布、README 规范化与打包规则见 CHANGELOG；图谱 ARCHITECTURE §3.6 / §3.7，计划 ROADMAP P16 / P17 / P18。不要重做已完成的改名 / 界面 / 打包 / 发布工作。
+- Windows 入口：`build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `ci.bat` 与 `manager.sh` 对应；提交前跑 `verify.bat`。`run.bat` / `ci.bat` 会启动真实宿主或重建 dist，仅用户明确要求时手动执行。
 - ProductIdentity 的 LegacyIdentity 是兼容契约，不是漏改：继续旧 LocalAppData 目录与 per-user Local mutex；新旧宿主互斥，不自动迁移 / 覆盖数据。BrandingTests 只读旧程序集生成的合成 JSON，并使用独立 Guid 测试用户。
 - `scripts/build.ps1` 默认输出 `.runtime/build/ExplorerTabs-dev`（临时快照）；正式包用 `package.bat` / `sh manager.sh package`，版本取 Directory.Build.props。测试可追加 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke。
 - 打包只清 `dist/dev`、`dist/release`、`.runtime/staging`，历史 `dist/vX-release` 原样保留；不生成 setup.exe；目标包运行中会报错，绝不 taskkill 宿主。

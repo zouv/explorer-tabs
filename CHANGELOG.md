@@ -3,6 +3,11 @@
 用户可感知变化按版本归档，遵循新增 / 变更 / 修复 / 移除 / 安全类别。
 历史版本准确发布日期未补造；迁移日为 2026-10-25。
 
+## [未发布]
+
+### 新增
+- 根目录新增 Windows 批处理入口：`build.bat`（构建 + 基础检查）、`test.bat`（完整安全自动检查）、`verify.bat`（警告即错误构建 + 完整检查 + 文档体检）、`clean.bat`（清理 bin / obj / .runtime）、`run.bat`（手动启动 release / dev 包）、`ci.bat`（clean → verify → package），与既有 `package.bat` / `manager.sh` 对应。`clean.bat` 不结束运行中的宿主，`run.bat` 仅用于手动启动真实交互宿主。
+
 ## [0.8.0] — 2026-10-27
 
 ### 新增
