@@ -64,7 +64,7 @@ namespace ExplorerTabs.Tests
                     var tips = UiField<ToolTip>(form, "chromeTips");
                     var newButton = UiField<Button>(form, "newTab");
                     var leftCommands = toolbar.Controls.OfType<Button>().Select(b => b.AccessibleName).ToArray();
-                    Check(leftCommands.Length >= 2 && leftCommands[0] == "加入已有窗口…" && leftCommands[1] == "分离窗口…",
+                    Check(leftCommands.Length >= 2 && leftCommands[0] == "加入窗口…" && leftCommands[1] == "分离窗口…",
                         "join and detach window actions stay adjacent in the left group");
                     Check(toolbarRight.Controls.OfType<Button>().Select(b => b.AccessibleName).SequenceEqual(new[] { "搜索标签…" }),
                         "search remains the right-aligned dialog command");
@@ -91,19 +91,27 @@ namespace ExplorerTabs.Tests
                     UiCall(form, "SetCreationControls", true);
                     Check(!newButton.Enabled && UiField<Button>(form, "cancelCreation").Visible, "async preparation disables new commands and exposes cancel glyph");
                     UiCall(form, "SetCreationControls", false);
+                    settings.ShortcutsEnabled = true; UiCall(form, "ApplySettings", settings);
                     using (var appMenu = (ContextMenuStrip)UiCall(form, "CreateAppMenu")!)
                     {
                         var appTexts = appMenu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
-                        Check(appTexts.SequenceEqual(new[] { "设置…", "关于", "关闭并还原窗口", "关闭" }),
-                            "app menu exposes settings, about, restore-and-exit and close");
+                        Check(appTexts.SequenceEqual(new[] { "设置…", "关闭（分离所有窗口）", "关闭", "关于" }),
+                            "app menu exposes settings, restore-and-exit, close, and about last in its own group");
+                        var settingsItem = appMenu.Items.OfType<ToolStripMenuItem>().Single(i => i.Text == "设置…");
+                        Check(settingsItem.ShortcutKeyDisplayString == "Ctrl+," && settingsItem.ShowShortcutKeys && !settingsItem.Text.Contains("Ctrl"),
+                            "settings shortcut uses the right-aligned shortcut column instead of inline text");
+                        Check(appMenu.Items[appMenu.Items.Count - 1] is ToolStripMenuItem lastAppItem && lastAppItem.Text == "关于" &&
+                            appMenu.Items[appMenu.Items.Count - 2] is ToolStripSeparator,
+                            "about is separated at the bottom of the app menu");
                         Check(!appTexts.Any(t => t.Contains("移动") || t.Contains("大小") || t.Contains("最小化") || t.Contains("最大化")),
                             "app menu no longer duplicates window layout commands");
-                        var restoreItem = appMenu.Items.OfType<ToolStripMenuItem>().Single(i => i.Text == "关闭并还原窗口");
-                        Check(restoreItem.ToolTipText.Contains("恢复所有会话窗口"),
+                        var restoreItem = appMenu.Items.OfType<ToolStripMenuItem>().Single(i => i.Text == "关闭（分离所有窗口）");
+                        Check(restoreItem.ToolTipText.Contains("分离所有会话窗口"),
                             "restore-and-exit menu item explains that windows stay open");
                         var closeItem = appMenu.Items.OfType<ToolStripMenuItem>().Single(i => i.Text == "关闭");
-                        Check(closeItem.ShortcutKeyDisplayString == "Alt+F4" && closeItem.ToolTipText.Contains("关闭所有会话窗口"),
-                            "app menu close advertises Alt+F4 and explains the close-all behaviour");
+                        Check(closeItem.ShortcutKeyDisplayString == "Alt+F4" && closeItem.ToolTipText.Contains("关闭所有会话窗口") &&
+                            closeItem.ShowShortcutKeys && !closeItem.Text.Contains("Alt+F4"),
+                            "app menu close advertises Alt+F4 in the right-aligned shortcut column and explains the close-all behaviour");
                     }
                 }
                 var aboutType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.AboutDialog", true)!;

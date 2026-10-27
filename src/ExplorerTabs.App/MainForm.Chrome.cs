@@ -58,13 +58,14 @@ namespace ExplorerTabs.App
             settingsItem.Enabled = creation == null && workspaceOperation == null && !explorerTabs.IsBusy;
             ShowShortcut(settingsItem, ShortcutChord(HostCommand.Settings));
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("关于", null, (_, __) => QueueMenuAction(ShowAbout));
-            menu.Items.Add(new ToolStripSeparator());
-            var restoreItem = menu.Items.Add("关闭并还原窗口", null, (_, __) => QueueMenuAction(CloseRestoringWindows));
-            restoreItem.ToolTipText = "恢复所有会话窗口为独立 Explorer，然后退出应用。";
+            var restoreItem = menu.Items.Add("关闭（分离所有窗口）", null, (_, __) => QueueMenuAction(CloseRestoringWindows));
+            restoreItem.ToolTipText = "分离所有会话窗口为独立 Explorer，然后退出应用。";
             var closeItem = menu.Items.Add("关闭", null, (_, __) => QueueMenuAction(RequestExitByClosingSessions));
             ShowShortcut(closeItem, "Alt+F4");
             closeItem.ToolTipText = "关闭所有会话窗口并退出应用。";
+            // About is informational: keep it in its own group at the bottom.
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("关于", null, (_, __) => QueueMenuAction(ShowAbout));
             menu.ShowItemToolTips = true;
             return menu;
         }

@@ -35,7 +35,7 @@ namespace ExplorerTabs.App
         private readonly IAppSettingsStore? settingsStore;
         private readonly IExplorerTabService explorerTabs;
         private CancellationTokenSource? creation;
-        private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入已有窗口…");
+        private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入窗口…");
         private readonly IconButton newTab = new IconButton(UiGlyph.NewTab, "新建标签") { Primary = true };
         private readonly IconButton cancelCreation = new IconButton(UiGlyph.Cancel, "取消操作") { Visible = false };
 

@@ -1,10 +1,11 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-10-27；无进行中开发任务；0.7.0 已打包并上传 GitHub Release（v0.7.0）。
+状态日期：2026-10-27；无进行中开发任务；0.7.0 已打包并上传 GitHub Release（v0.7.0）。本轮菜单文案统一与“收藏”管理界面已实现并通过自动验证，尚未打包发布。
 源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 Release 均已上传。
-最后验证：2026-10-27 完整 `build.ps1` 安全测试通过（808 项：核心 443、原生 63、跨进程 7、标签 UI 38、创建 UI 37、工作空间 / 窗框 UI 220）；0.7.0 release / debug 包已由 `package.bat` 产出并上传：`dist/release/ExplorerTabs_0.7.0_x64-unpack.zip`、`dist/dev/ExplorerTabs_0.7.0_x64-unpack-debug.zip`、`dist/release/SHA256SUMS.txt`；`dist/release/unpack` 已刷新为 0.7.0。
+最后验证：2026-10-27 完整 `build.ps1` 安全测试通过（824 项：核心 443、原生 63、跨进程 7、标签 UI 38、创建 UI 38、工作空间 / 窗框 UI 235）；本轮开发快照为 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`，`dist/release/unpack` 仍为 0.7.0，未重新打包。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
+- 本轮（未打包）：应用菜单“关于”移到最下并单独分组、“关闭并还原窗口”改为“关闭（分离所有窗口）”；“加入”按钮提示改为“加入窗口…”，候选项改为“加入【标题】窗口”并带悬浮说明；“选择要加入的…”改为“打开“加入”管理界面”；分离菜单四项改为窗口措辞；收藏菜单改为“收藏当前目录… / 收藏其他目录… / 保存当前标签组”，底部新增“打开“收藏”管理界面”（目录管理 + 组管理两页）；菜单快捷键统一靠右。请用开发快照或重新 package 后实测，重点看长标题候选菜单宽度、快捷键对齐与管理弹窗操作。
 - 0.7.0 已发布：弹窗 1px 边框、活动标签关闭后聚焦左邻、加入窗口候选菜单、应用菜单“设置 / 关于 / 关闭并还原窗口 / 关闭”（关闭显示 Alt+F4 与提示）、工具栏设置按钮移除、标签悬停 × 与缓存目录 Tooltip；右上角 X / Alt+F4 / 菜单“关闭”关闭所有会话窗口后退出，恢复退出走“关闭并还原窗口”或“分离窗口 → 恢复窗口并退出宿主”。请从 GitHub Release 下载或用 `dist/release/unpack` 实测观感、退出流程与 10 秒未关闭时的保留行为。
 - 0.7.0 修复：重启后新建的 ShellBrowserWindow 由注册的 rundll32 宿主托管时，恢复 / 加入 / 关闭按精确身份接管；需下次开机出现同场景时用 0.7.0 包实测“恢复上次会话”，并在 host.log 查看 `Creation inspect; ... image=...` 确认实际宿主。
 - 0.6.4 已发布：中键 / Ctrl+W 关闭、右键菜单快捷键、工具栏分组与图标、`+` 跟随最后一个标签、弹窗无边框自定义标题栏与小圆角；可从 GitHub Release 下载，或退出旧宿主后用本地 `dist/release/unpack` 刷新版本实测。

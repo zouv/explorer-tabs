@@ -295,6 +295,23 @@ namespace ExplorerTabs.Tests
                 UiAnyCall(tabs, "ConfigureLayout", false, 3); tabs.PerformLayout(); Check(!tabs.WrapContents && TabControls(tabs).All(c => c.Width >= 110 && c.Width <= 280) && tabs.HorizontalScroll.Visible, "disabling wrap retains adaptive widths and horizontal overflow");
                 Check(!api.Events.Any(e => e.StartsWith("restore")), "multirow layout and reorder never detach Explorer");
             }
+            var menuHost = new HostController(new FakeWindows(), new FakeStore()); Add(menuHost, 1);
+            using (var form = WorkspaceForm(menuHost, new WorkspaceService(), directory, new WorkspaceStore()))
+            {
+                using (var menu = (ContextMenuStrip)UiCall(form, "CreateDetachMenu")!)
+                    Check(menu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).SequenceEqual(
+                        new[] { "关闭当前窗口", "分离当前窗口", "分离所有窗口", "关闭应用并分离所有窗口" }),
+                        "detach menu uses window terminology and explains closing the app by detaching");
+                using (var menu = (ContextMenuStrip)UiCall(form, "CreateLibraryMenu")!)
+                {
+                    var items = menu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
+                    Check(items.Take(3).SequenceEqual(new[] { "收藏当前目录…", "收藏其他目录…", "保存当前标签组" }),
+                        "favorites menu renames its save commands");
+                    Check(items.Last() == "打开“收藏”管理界面" && menu.Items[menu.Items.Count - 2] is ToolStripSeparator,
+                        "favorites management entry stays at the bottom in its own group");
+                }
+            }
+            menuHost.DetachAll();
             var settingsType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.SettingsDialog", true)!;
             using (var dialog = (Form)Activator.CreateInstance(settingsType, new AppSettings(), false, true)!)
             {
@@ -312,6 +329,65 @@ namespace ExplorerTabs.Tests
                 Check(dialog.DialogResult == DialogResult.None && UiField<Label>(dialog, "error").Text.Length > 0, "duplicate binding shows inline validation and keeps settings open");
                 grid.Rows[1].Cells[1].Value = ""; ((Button)dialog.AcceptButton!).PerformClick(); var result = (AppSettings)settingsType.GetProperty("Result")!.GetValue(dialog)!;
                 Check(dialog.DialogResult == DialogResult.OK && result.WrapTabs && result.MaximumTabRows == 5 && result.KeyBindings[1].Chord == "", "settings apply wrap/row count and explicitly disabled key");
+            }
+            var managerType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.LibraryManagerDialog", true)!;
+            var sampleLibrary = new WorkspaceLibrary
+            {
+                Favorites = new List<FolderBookmark>
+                {
+                    new FolderBookmark { Name = "资料", Directory = @"C:\Docs" },
+                    new FolderBookmark { Name = "项目", Directory = @"D:\Project" }
+                },
+                Groups = new List<SavedWorkspace>
+                {
+                    new SavedWorkspace { Name = "工作日", Tabs = new List<WorkspaceTab> { new WorkspaceTab { Directory = @"C:\One" }, new WorkspaceTab { Directory = @"C:\Two" } } }
+                }
+            };
+            using (var manager = (Form)Activator.CreateInstance(managerType, sampleLibrary)!)
+            {
+                MakeHidden(manager);
+                Check(!manager.ShowIcon && manager.Padding.All == 1 && HasWindowRegion(manager),
+                    "favorites manager reuses the borderless rounded dialog chrome and 1px border ring");
+                var pages = manager.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<TabControl>().Single();
+                Check(pages.TabPages.Cast<TabPage>().Select(p => p.Text).SequenceEqual(new[] { "目录管理", "组管理" }),
+                    "favorites manager separates folder management and group management");
+                var favoritesView = UiField<ListView>(manager, "favorites"); var groupsView = UiField<ListView>(manager, "groups");
+                Check(favoritesView.Items.Count == 2 && groupsView.Items.Count == 1 && favoritesView.Items[0].Text == "资料" && groupsView.Items[0].SubItems[1].Text == "2 个目录",
+                    "favorites manager lists saved directories and groups from the live library");
+                Check(!UiField<Button>(manager, "removeFavorite").Enabled && !UiField<Button>(manager, "openGroup").Enabled,
+                    "management actions stay disabled until a row is selected");
+                favoritesView.Items[1].Selected = true;
+                Check(UiField<Button>(manager, "removeFavorite").Enabled, "selecting a saved directory enables its actions");
+                UiField<Button>(manager, "removeFavorite").PerformClick();
+                Check(favoritesView.Items.Count == 1 && (bool)managerType.GetProperty("Dirty")!.GetValue(manager)!,
+                    "removing a saved directory edits the working copy and marks it dirty");
+                UiField<Button>(manager, "save").PerformClick();
+                var edited = (WorkspaceLibrary)managerType.GetProperty("Result")!.GetValue(manager)!;
+                Check(manager.DialogResult == DialogResult.OK && edited.Favorites.Count == 1 && edited.Groups.Count == 1 && sampleLibrary.Favorites.Count == 2,
+                    "saving returns the edited library and leaves the live library untouched");
+            }
+            using (var manager = (Form)Activator.CreateInstance(managerType, sampleLibrary)!)
+            {
+                MakeHidden(manager);
+                var favoritesView = UiField<ListView>(manager, "favorites");
+                favoritesView.Items[0].Selected = true;
+                UiField<Button>(manager, "openFavorite").PerformClick();
+                var pending = (FolderBookmark?)managerType.GetProperty("FavoriteToOpen")!.GetValue(manager);
+                Check(manager.DialogResult == DialogResult.OK && pending != null && pending.Directory == @"C:\Docs" && !(bool)managerType.GetProperty("Dirty")!.GetValue(manager)!,
+                    "opening a favorite only reports the pending target without marking the library dirty");
+            }
+            using (var manager = (Form)Activator.CreateInstance(managerType, sampleLibrary)!)
+            {
+                MakeHidden(manager);
+                var pages = manager.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<TabControl>().Single();
+                pages.SelectedIndex = 1; manager.PerformLayout();
+                var groupsView = UiField<ListView>(manager, "groups");
+                groupsView.Items[0].Selected = true;
+                Check(UiField<Button>(manager, "openGroup").Enabled, "selecting a saved group enables its actions on the group tab");
+                UiField<Button>(manager, "openGroup").PerformClick();
+                var pending = (SavedWorkspace?)managerType.GetProperty("GroupToOpen")!.GetValue(manager);
+                Check(manager.DialogResult == DialogResult.OK && pending != null && pending.Tabs.Count == 2,
+                    "opening a group reports its full ordered directory list");
             }
             using (var picker = CreatePicker())
             {

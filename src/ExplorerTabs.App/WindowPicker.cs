@@ -16,7 +16,7 @@ namespace ExplorerTabs.App
         public WindowPicker(IEnumerable<long> attachedHandles)
         {
             attached = new HashSet<long>(attachedHandles);
-            Text = "选择要加入的 Explorer 窗口";
+            Text = "“加入”管理 · 选择要加入的 Explorer 窗口";
             Font = new Font("Microsoft YaHei UI", 9F);
             ClientSize = new Size(820, 508); StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false; BackColor = Color.White;

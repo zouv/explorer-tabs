@@ -11,8 +11,10 @@ namespace ExplorerTabs.App
         private readonly Label error = new Label { Dock = DockStyle.Fill, AutoSize = true, ForeColor = Color.Firebrick };
         public string TabTitle => name.Text;
         public RenameTabDialog(string current)
+            : this(current, "重命名标签（不修改目录或 Explorer 标题）") { }
+        public RenameTabDialog(string current, string title)
         {
-            Text = "重命名标签（不修改目录或 Explorer 标题）";
+            Text = title;
             Font = new Font("Microsoft YaHei UI", 9F);
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false;

@@ -40,15 +40,7 @@ namespace ExplorerTabs.App
             var session = new IconButton(UiGlyph.Session, "会话与恢复…");
             var windows = new IconButton(UiGlyph.DetachWindow, "分离窗口…");
             search.Click += (_, __) => QueueUi(ShowTabPickerAsync); favorites.Click += (_, __) => ShowLibraryMenu(favorites); session.Click += (_, __) => ShowSessionMenu(session);
-            windows.Click += (_, __) =>
-            {
-                var menu = new ContextMenuStrip();
-                var active = controller.Active;
-                var close = menu.Items.Add("关闭当前 Explorer", null, (_, __) => { if (active != null) QueueUi(() => CloseTabAsync(active)); }); close.Enabled = controller.Active != null && workspaceOperation == null;
-                menu.Items.Add("分离当前（不关闭）", null, (_, __) => { if (active != null) QueueMenuAction(() => Detach(active)); });
-                menu.Items.Add("分离全部（不关闭）", null, (_, __) => QueueMenuAction(() => DetachAll(false))); menu.Items.Add(new ToolStripSeparator());
-                menu.Items.Add("恢复窗口并退出宿主", null, (_, __) => QueueMenuAction(CloseRestoringWindows)); ShowManagedMenu(menu, windows);
-            };
+            windows.Click += (_, __) => ShowManagedMenu(CreateDetachMenu(), windows);
             toolbar.Paint += PaintToolbarDivider;
             toolbarRight.Paint += PaintToolbarDivider;
             if (toolbar.Parent != null) toolbar.Parent.Paint += PaintToolbarDivider;
@@ -66,6 +58,18 @@ namespace ExplorerTabs.App
             sessionOffer.Controls.AddRange(new Control[] { new Label { Text = "上次的标签目录已保存", AutoSize = true, Margin = new Padding(4, 7, 12, 0) }, restore, dismiss });
             Controls.Add(sessionOffer); Controls.SetChildIndex(sessionOffer, Controls.GetChildIndex(chrome!) - 1);
             tabs.ConfigureLayout(settings.WrapTabs, settings.MaximumTabRows);
+        }
+        private ContextMenuStrip CreateDetachMenu()
+        {
+            var menu = new ContextMenuStrip();
+            var active = controller.Active;
+            var close = menu.Items.Add("关闭当前窗口", null, (_, __) => { if (active != null) QueueUi(() => CloseTabAsync(active)); });
+            close.Enabled = controller.Active != null && workspaceOperation == null;
+            menu.Items.Add("分离当前窗口", null, (_, __) => { if (active != null) QueueMenuAction(() => Detach(active)); });
+            menu.Items.Add("分离所有窗口", null, (_, __) => QueueMenuAction(() => DetachAll(false)));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("关闭应用并分离所有窗口", null, (_, __) => QueueMenuAction(CloseRestoringWindows));
+            return menu;
         }
         private void PaintToolbarDivider(object? sender, PaintEventArgs e)
         {
@@ -91,7 +95,12 @@ namespace ExplorerTabs.App
         private string ShortcutChord(HostCommand command) =>
             settings.ShortcutsEnabled ? settings.KeyBindings.FirstOrDefault(k => k.Command == command)?.Chord ?? "" : "";
         private static void ShowShortcut(ToolStripItem item, string chord)
-        { if (!string.IsNullOrEmpty(chord) && item is ToolStripMenuItem menuItem) menuItem.ShortcutKeyDisplayString = chord; }
+        {
+            // ShortcutKeyDisplayString is painted by WinForms in the menu's right-aligned
+            // shortcut column; never append the chord to the item text itself.
+            if (!string.IsNullOrEmpty(chord) && item is ToolStripMenuItem menuItem)
+            { menuItem.ShowShortcutKeys = true; menuItem.ShortcutKeyDisplayString = chord; }
+        }
         private void ShowSessionOffer() => sessionOffer.Visible = settings.RememberSession && library.LastSession != null && controller.Sessions.Count == 0;
         private void ShowAddWindowsMenu()
         {
@@ -109,17 +118,18 @@ namespace ExplorerTabs.App
                 .GroupBy(w => w.Handle).Select(group => group.First()).ToArray();
             foreach (var identity in candidates)
             {
-                var title = string.IsNullOrWhiteSpace(identity.Title) ? "（无标题 Explorer 窗口）" : identity.Title.Replace("&", "&&");
-                var item = new ToolStripMenuItem(title)
+                var displayTitle = string.IsNullOrWhiteSpace(identity.Title) ? "（无标题窗口）" : identity.Title;
+                var text = "加入【" + displayTitle.Replace("&", "&&") + "】窗口";
+                var item = new ToolStripMenuItem(text)
                 {
-                    ToolTipText = "PID " + identity.ProcessId + " · HWND 0x" + identity.Handle.ToString("X")
+                    ToolTipText = "把“" + displayTitle + "”加入为标签。\nPID " + identity.ProcessId + " · HWND 0x" + identity.Handle.ToString("X")
                 };
                 item.Click += (_, __) => QueueMenuAction(() => AttachSelectedWindows(new[] { identity }));
                 menu.Items.Add(item);
             }
             if (candidates.Length == 0) menu.Items.Add(new ToolStripMenuItem("暂无可加入的 Explorer 窗口") { Enabled = false });
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("选择要加入的 Explorer 窗口…", null, (_, __) => QueueMenuAction(OpenWindowPicker));
+            menu.Items.Add("打开“加入”管理界面", null, (_, __) => QueueMenuAction(OpenWindowPicker));
             menu.ShowItemToolTips = true;
             return menu;
         }
@@ -226,13 +236,13 @@ namespace ExplorerTabs.App
             var clear = menu.Items.Add("清除保存的上次会话（不关闭窗口）", null, (_, __) => QueueMenuAction(() => RunSafely("清除会话失败", () => { var copy = library.Copy(); copy.LastSession = null; CommitLibrary(copy); workspaceTouched = false; sessionOffer.Visible = false; }))); clear.Enabled = library.LastSession != null && libraryStore != null && workspaceOperation == null;
             ShowManagedMenu(menu, anchor);
         }
-        private void ShowLibraryMenu(Control anchor)
+        private ContextMenuStrip CreateLibraryMenu()
         {
             var menu = new ContextMenuStrip();
             var active = controller.Active;
-            var add = menu.Items.Add("收藏当前标签目录…", null, (_, __) => { if (active != null) QueueUi(() => AddFavoriteAsync(active)); }); add.Enabled = controller.Active != null && workspaceOperation == null && libraryStore != null;
-            var browse = menu.Items.Add("添加常用目录…", null, (_, __) => QueueUi(AddFolderBookmarkAsync)); browse.Enabled = libraryStore != null && workspaceOperation == null;
-            var save = menu.Items.Add("将当前标签保存为组…", null, (_, __) => QueueUi(SaveGroupAsync)); save.Enabled = controller.Sessions.Count > 0 && workspaceOperation == null && libraryStore != null;
+            var add = menu.Items.Add("收藏当前目录…", null, (_, __) => { if (active != null) QueueUi(() => AddFavoriteAsync(active)); }); add.Enabled = controller.Active != null && workspaceOperation == null && libraryStore != null;
+            var browse = menu.Items.Add("收藏其他目录…", null, (_, __) => QueueUi(AddFolderBookmarkAsync)); browse.Enabled = libraryStore != null && workspaceOperation == null;
+            var save = menu.Items.Add("保存当前标签组", null, (_, __) => QueueUi(SaveGroupAsync)); save.Enabled = controller.Sessions.Count > 0 && workspaceOperation == null && libraryStore != null;
             menu.Items.Add(new ToolStripSeparator());
             foreach (var favorite in library.Favorites)
             {
@@ -249,10 +259,36 @@ namespace ExplorerTabs.App
                 item.DropDownItems.Add("重命名…", null, (_, __) => QueueUi(() => RenameLibraryItemAsync(group.Id, true)));
                 item.DropDownItems.Add("删除标签组（不关闭窗口）", null, (_, __) => QueueMenuAction(() => RunSafely("删除标签组失败", () => { var copy = library.Copy(); copy.Groups.RemoveAll(g => g.Id == group.Id); CommitLibrary(copy); }))); item.Enabled = workspaceOperation == null; menu.Items.Add(item);
             }
-            if (library.Groups.Count == 0) menu.Items.Add(new ToolStripMenuItem("暂无标签组") { Enabled = false }); ShowManagedMenu(menu, anchor);
+            if (library.Groups.Count == 0) menu.Items.Add(new ToolStripMenuItem("暂无标签组") { Enabled = false }); menu.Items.Add(new ToolStripSeparator());
+            var manage = menu.Items.Add("打开“收藏”管理界面", null, (_, __) => QueueMenuAction(ShowLibraryManager));
+            manage.Enabled = libraryStore != null && workspaceOperation == null;
+            return menu;
+        }
+        private void ShowLibraryMenu(Control anchor) => ShowManagedMenu(CreateLibraryMenu(), anchor);
+        private void ShowLibraryManager()
+        {
+            if (workspaceOperation != null || exitPreparing || libraryStore == null) return;
+            FolderBookmark? openFavorite;
+            SavedWorkspace? openGroup;
+            using (EnterModal())
+            using (var dialog = new LibraryManagerDialog(library))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                if (dialog.Dirty) CommitLibrary(dialog.Result);
+                openFavorite = dialog.FavoriteToOpen?.Copy();
+                openGroup = dialog.GroupToOpen?.Copy();
+            }
+            if (openFavorite != null)
+                QueueUi(() => OpenWorkspaceAsync(new SavedWorkspace
+                {
+                    Name = openFavorite.Name,
+                    Tabs = new List<WorkspaceTab> { new WorkspaceTab { Directory = openFavorite.Directory } }
+                }));
+            else if (openGroup != null)
+                QueueUi(() => OpenWorkspaceAsync(openGroup));
         }
         private string? AskName(string title, string value)
-        { using (EnterModal()) using (var dialog = new RenameTabDialog(value)) { dialog.Text = title; return dialog.ShowDialog(this) == DialogResult.OK ? TabManagementPolicy.NormalizeTitle(dialog.TabTitle) : null; } }
+        { using (EnterModal()) using (var dialog = new RenameTabDialog(value, title)) return dialog.ShowDialog(this) == DialogResult.OK ? TabManagementPolicy.NormalizeTitle(dialog.TabTitle) : null; }
         private Task RenameLibraryItemAsync(string id, bool group)
         {
             var copy = library.Copy(); string? old = group ? copy.Groups.FirstOrDefault(g => g.Id == id)?.Name : copy.Favorites.FirstOrDefault(f => f.Id == id)?.Name;
