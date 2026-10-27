@@ -1,15 +1,12 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-10-27；0.7.0 版本号已提升，正在打包并上传 GitHub Release；0.6.4 已发布（v0.6.4）。
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 Release 均已上传。
-最后验证：2026-10-27 完整 `build.ps1` 安全测试通过（808 项：核心 443、原生 63、跨进程 7、标签 UI 38、创建 UI 37、工作空间 / 窗框 UI 220）；0.7.0 开发构建已验证，`.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe` 的 FileVersion / AssemblyVersion 均为 0.7.0.0。旧宿主已退出，`dist/release/unpack` 将由本轮 `package.bat` 刷新为 0.7.0。
-
-## 进行中
-- 0.7.0 打包 / 上传：`Directory.Build.props` 已升至 0.7.0，CHANGELOG 已归档到 `[0.7.0] — 2026-10-27`，完整测试通过；正在运行 `package.bat` 并上传 GitHub Release，完成后清理本节。
+状态日期：2026-10-27；无进行中开发任务；0.7.0 已打包并上传 GitHub Release（v0.7.0）。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 Release 均已上传。
+最后验证：2026-10-27 完整 `build.ps1` 安全测试通过（808 项：核心 443、原生 63、跨进程 7、标签 UI 38、创建 UI 37、工作空间 / 窗框 UI 220）；0.7.0 release / debug 包已由 `package.bat` 产出并上传：`dist/release/ExplorerTabs_0.7.0_x64-unpack.zip`、`dist/dev/ExplorerTabs_0.7.0_x64-unpack-debug.zip`、`dist/release/SHA256SUMS.txt`；`dist/release/unpack` 已刷新为 0.7.0。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
-- 2026-10-27 0.7.0：弹窗 1px 边框、活动标签关闭后聚焦左邻、加入窗口候选菜单、应用菜单“设置 / 关于 / 关闭并还原窗口 / 关闭”（关闭显示 Alt+F4 与提示）、工具栏设置按钮移除、标签悬停 × 与缓存目录 Tooltip；右上角 X / Alt+F4 / 菜单“关闭”现在关闭所有会话窗口后退出，恢复退出走“关闭并还原窗口”或“分离窗口 → 恢复窗口并退出宿主”。退出旧宿主后重跑打包，再实测观感、退出流程与 10 秒未关闭时的保留行为。
-- 2026-10-27 修复（0.7.0）：重启后新建的 ShellBrowserWindow 由注册的 rundll32 宿主托管时，恢复 / 加入 / 关闭按精确身份接管；需下次开机出现同场景时用 0.7.0 包实测“恢复上次会话”，并在 host.log 查看 `Creation inspect; ... image=...` 确认实际宿主。
+- 0.7.0 已发布：弹窗 1px 边框、活动标签关闭后聚焦左邻、加入窗口候选菜单、应用菜单“设置 / 关于 / 关闭并还原窗口 / 关闭”（关闭显示 Alt+F4 与提示）、工具栏设置按钮移除、标签悬停 × 与缓存目录 Tooltip；右上角 X / Alt+F4 / 菜单“关闭”关闭所有会话窗口后退出，恢复退出走“关闭并还原窗口”或“分离窗口 → 恢复窗口并退出宿主”。请从 GitHub Release 下载或用 `dist/release/unpack` 实测观感、退出流程与 10 秒未关闭时的保留行为。
+- 0.7.0 修复：重启后新建的 ShellBrowserWindow 由注册的 rundll32 宿主托管时，恢复 / 加入 / 关闭按精确身份接管；需下次开机出现同场景时用 0.7.0 包实测“恢复上次会话”，并在 host.log 查看 `Creation inspect; ... image=...` 确认实际宿主。
 - 0.6.4 已发布：中键 / Ctrl+W 关闭、右键菜单快捷键、工具栏分组与图标、`+` 跟随最后一个标签、弹窗无边框自定义标题栏与小圆角；可从 GitHub Release 下载，或退出旧宿主后用本地 `dist/release/unpack` 刷新版本实测。
 - 新入口 `dist/release/unpack/ExplorerTabs.exe`（由 package.bat 产出）：先在旧宿主分离全部并正常退出，再手动运行；未自动关闭任何宿主或 Explorer。
 - 0.6.1 灰框 / Ribbon 空行、自适应标签与多行 / 单行切换、跨行排序及 125% / 150% DPI 仍待真机复验；离屏检查不等于人工验收。
