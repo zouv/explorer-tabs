@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -18,6 +19,10 @@ namespace ExplorerTabs.Tests
         private static T UiField<T>(object target, string name) => (T)target.GetType().GetField(name, PrivateInstance)!.GetValue(target)!;
         private static void MakeHidden(Control control)
         {
+            // Forcing the internal Visible state also makes CreateControl create a WS_VISIBLE
+            // handle. Keep verification invisible: fully transparent and out of the taskbar,
+            // so test runs never flash windows or taskbar entries over the user's desktop.
+            if (control is Form form) { form.Opacity = 0; form.ShowInTaskbar = false; }
             typeof(Control).GetMethod("SetState", PrivateInstance)!.Invoke(control, new object[] { 2, true });
             control.CreateControl(); control.PerformLayout();
         }
@@ -51,6 +56,22 @@ namespace ExplorerTabs.Tests
                     Check(toolbar.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Left >= 0 && c.Right <= toolbar.ClientSize.Width && c.Bottom <= toolbar.ClientSize.Height) &&
                         toolbarRight.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Left >= 0 && c.Right <= toolbarRight.ClientSize.Width && c.Bottom <= toolbarRight.ClientSize.Height),
                         "minimum-width toolbar keeps every visible action control inside its group");
+                    var discovery = type.GetProperty("ExplorerDiscovery", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    discovery.SetValue(form, (Func<IReadOnlyList<WindowIdentity>>)(() => new[] { Identity(7), Identity(8) }));
+                    using (var menu = (ContextMenuStrip)UiCall(form, "CreateAddWindowsMenu")!)
+                    {
+                        var items = menu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
+                        Check(items.SequenceEqual(new[] { "Test 7", "Test 8", "选择要加入的 Explorer 窗口…" }),
+                            "attach menu lists discovered windows then the detailed picker entry");
+                    }
+                    discovery.SetValue(form, (Func<IReadOnlyList<WindowIdentity>>)(() => Array.Empty<WindowIdentity>()));
+                    using (var menu = (ContextMenuStrip)UiCall(form, "CreateAddWindowsMenu")!)
+                    {
+                        var placeholders = menu.Items.OfType<ToolStripMenuItem>().ToArray();
+                        Check(!placeholders[0].Enabled && placeholders[0].Text == "暂无可加入的 Explorer 窗口" &&
+                            placeholders.Last().Text == "选择要加入的 Explorer 窗口…",
+                            "attach menu keeps an explicit empty state and detailed picker entry");
+                    }
                     var task = (Task)UiCall(form, "CreateTabAsync", new object?[] { null })!; PumpTask(task);
                     Check(host.Sessions.Count == 1 && host.Active!.Identity.Handle == 1 && service.Calls == 1 && service.Source == null,
                         "new tab on empty host attaches only returned fake identity and activates it");
@@ -64,8 +85,11 @@ namespace ExplorerTabs.Tests
                     service.Hold = true; service.NextHandle = 3;
                     task = (Task)UiCall(form, "CreateTabAsync", new object?[] { null })!;
                     Check(!task.IsCompleted && !UiField<Button>(form, "newTab").Enabled && UiField<Button>(form, "cancelCreation").Visible &&
-                        !UiField<Button>(form, "preferences").Enabled && !UiField<Button>(form, "addWindows").Enabled,
+                        !UiField<Button>(form, "addWindows").Enabled,
                         "pending creation disables conflicting operations while exposing cancellation");
+                    using (var menu = (ContextMenuStrip)UiCall(form, "CreateAppMenu")!)
+                        Check(!menu.Items.OfType<ToolStripMenuItem>().First(i => i.Text == "设置…").Enabled,
+                            "pending creation disables the app-menu settings entry");
                     string progress = UiField<Label>(form, "status").Text; UiCall(form, "UpdateStatus");
                     Check(UiField<Label>(form, "status").Text == progress, "monitor status update does not overwrite creation progress");
                     int calls = service.Calls;

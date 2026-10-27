@@ -20,6 +20,7 @@ namespace ExplorerTabs.App
         private int insertion;
         private bool adjusting;
         private int maxRows = 3;
+        private Func<WindowSession, string?>? directoryLookup;
         private const int MinimumTabWidth = 110, MaximumTabWidth = 280;
         public int PreferredChromeHeight { get; private set; } = 36;
         public event Action? PreferredChromeHeightChanged;
@@ -47,9 +48,11 @@ namespace ExplorerTabs.App
         }
 
         public void Render(IReadOnlyList<WindowSession> sessions, WindowSession? active,
-            Func<WindowSession, ContextMenuStrip> createMenu)
+            Func<WindowSession, ContextMenuStrip> createMenu,
+            Func<WindowSession, string?>? directoryLookup = null)
         {
             CancelPointer();
+            this.directoryLookup = directoryLookup;
             var offset = new Point(-AutoScrollPosition.X, -AutoScrollPosition.Y);
             SuspendLayout();
             try
@@ -72,13 +75,12 @@ namespace ExplorerTabs.App
                         UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 6, 0),
                         BackColor = active == session ? HostTheme.Canvas : HostTheme.Chrome,
                         AccessibleName = session.DisplayTitle,
-                        AccessibleDescription = "拖动排序；右键管理；中键关闭 Explorer。"
+                        AccessibleDescription = "右键管理；悬停显示关闭按钮；中键关闭 Explorer。"
                     };
                     button.FlatAppearance.BorderSize = active == session ? 1 : 0;
                     button.FlatAppearance.BorderColor = Color.FromArgb(74, 127, 202);
                     button.ContextMenuStrip = createMenu(session);
-                    tips.SetToolTip(button, session.DisplayTitle + "\nExplorer：" + session.Title +
-                        "\n拖动排序 · 右键管理 · 中键关闭 Explorer");
+                    tips.SetToolTip(button, TooltipFor(session, directoryLookup?.Invoke(session)));
                     button.Width = MeasureTabWidth(button);
                     Controls.Add(button);
                 }
@@ -111,12 +113,12 @@ namespace ExplorerTabs.App
 
         public void ConfigureLayout(bool wrap, int rows)
         { CancelPointer(); WrapContents = wrap; maxRows = Math.Max(2, Math.Min(8, rows)); AutoScrollMinSize = Size.Empty; AutoScrollPosition = Point.Empty; UpdateRows(); PerformLayout(); }
-        // Match the actual single-line painter, including folder glyph and text padding.
+        // Match the actual single-line painter, including folder glyph, close column and text padding.
         private int MeasureTabWidth(Control button)
         {
             int text = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty,
                 TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width;
-            return Math.Max(Pixels(MinimumTabWidth), Math.Min(Pixels(MaximumTabWidth), text + Pixels(43)));
+            return Math.Max(Pixels(MinimumTabWidth), Math.Min(Pixels(MaximumTabWidth), text + Pixels(63)));
         }
         private int AssignWrappedRows(int available)
         {
@@ -223,6 +225,11 @@ namespace ExplorerTabs.App
         }
 
         internal void PublishMove(TabMove move) => MoveRequested?.Invoke(move.Session, move.Index);
+        internal static string TooltipFor(WindowSession session, string? directory) =>
+            session.DisplayTitle + "\nExplorer：" + session.Title + "\n目录：" +
+            (string.IsNullOrWhiteSpace(directory) ? "未缓存" : directory);
+        internal void RefreshTip(TabButton button) =>
+            tips.SetToolTip(button, TooltipFor(button.Session, directoryLookup?.Invoke(button.Session)));
         private void Queue(Action action)
         {
             if (IsDisposed || !IsHandleCreated) return;
@@ -293,11 +300,24 @@ namespace ExplorerTabs.App
             private bool releasingMouse;
             public WindowSession Session { get; }
             public bool IsActive { get; set; }
-            private bool hovered;
+            private bool hovered, closeHovered, closePressed;
             public TabButton(TabStrip strip, WindowSession session)
             { this.strip = strip; Session = session; SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true); }
-            protected override void OnMouseEnter(EventArgs e) { hovered = true; Invalidate(); base.OnMouseEnter(e); }
-            protected override void OnMouseLeave(EventArgs e) { hovered = false; Invalidate(); base.OnMouseLeave(e); }
+            private bool ShowCloseButton => hovered || closePressed;
+            internal Rectangle CloseButtonBounds
+            {
+                get
+                {
+                    int size = strip.Pixels(16);
+                    return new Rectangle(Width - strip.Pixels(18), (Height - size) / 2, size, size);
+                }
+            }
+            internal bool HitClose(Point point) =>
+                Session.State == SessionState.Attached && ShowCloseButton && CloseButtonBounds.Contains(point);
+            protected override void OnMouseEnter(EventArgs e)
+            { hovered = true; strip.RefreshTip(this); Invalidate(); base.OnMouseEnter(e); }
+            protected override void OnMouseLeave(EventArgs e)
+            { hovered = closeHovered = false; Invalidate(); base.OnMouseLeave(e); }
             protected override void OnPaint(PaintEventArgs e)
             {
                 var g = e.Graphics; g.Clear(Parent?.BackColor ?? HostTheme.Chrome);
@@ -308,24 +328,47 @@ namespace ExplorerTabs.App
                 int icon = strip.Pixels(16), left = strip.Pixels(10);
                 using (var pen = new Pen(IsActive ? HostTheme.Accent : Color.FromArgb(115, 131, 153), 1.3F))
                 { int y = (Height - icon) / 2; g.DrawRectangle(pen, left, y + 4, icon, icon - 5); g.DrawLines(pen, new[] { new Point(left, y + 4), new Point(left, y + 1), new Point(left + icon / 2, y + 1), new Point(left + icon / 2 + 2, y + 4) }); }
-                TextRenderer.DrawText(g, Text, Font, new Rectangle(left + icon + strip.Pixels(7), 0, Width - left - icon - strip.Pixels(17), Height), HostTheme.Text,
+                TextRenderer.DrawText(g, Text, Font, new Rectangle(left + icon + strip.Pixels(7), 0, Width - left - icon - strip.Pixels(37), Height), HostTheme.Text,
                     TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+                if (ShowCloseButton)
+                {
+                    var close = CloseButtonBounds;
+                    if (closeHovered)
+                        using (var brush = new SolidBrush(Color.FromArgb(238, 222, 224)))
+                        using (var path = HostTheme.Round(new RectangleF(close.X - 2, close.Y - 2, close.Width + 4, close.Height + 4), 4))
+                            g.FillPath(brush, path);
+                    HostTheme.Glyph(g, UiGlyph.Close, close,
+                        closeHovered ? Color.FromArgb(166, 49, 49) : Color.FromArgb(115, 131, 153));
+                }
                 if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(ClientRectangle, -4, -4));
             }
             private Point StripPoint(Point point) => strip.PointToClient(PointToScreen(point));
             protected override void OnMouseDown(MouseEventArgs e)
             {
                 suppressClick = false;
-                strip.BeginPointer(this, e.Button, StripPoint(e.Location));
+                closePressed = e.Button == MouseButtons.Left && HitClose(e.Location);
+                if (!closePressed) strip.BeginPointer(this, e.Button, StripPoint(e.Location));
                 base.OnMouseDown(e);
             }
             protected override void OnMouseMove(MouseEventArgs e)
             {
-                strip.MovePointer(this, StripPoint(e.Location));
+                bool overClose = HitClose(e.Location);
+                if (overClose != closeHovered) { closeHovered = overClose; Invalidate(); }
+                if (!closePressed) strip.MovePointer(this, StripPoint(e.Location));
                 base.OnMouseMove(e);
             }
             protected override void OnMouseUp(MouseEventArgs e)
             {
+                if (closePressed)
+                {
+                    bool close = e.Button == MouseButtons.Left && HitClose(e.Location);
+                    closePressed = false;
+                    suppressClick = true; // a press on the close glyph can never become a tab selection
+                    Invalidate();
+                    base.OnMouseUp(e);
+                    if (close) strip.Queue(() => strip.Close(Session));
+                    return;
+                }
                 suppressClick = suppressClick || strip.IsDragging(this);
                 var move = strip.EndPointer(this, e.Button, StripPoint(e.Location));
                 base.OnMouseUp(e);
@@ -335,7 +378,7 @@ namespace ExplorerTabs.App
             protected override void OnClick(EventArgs e)
             {
                 // WinForms may fire Click BEFORE MouseUp; checking the live gesture is essential.
-                if (suppressClick || strip.IsDragging(this) || (e is MouseEventArgs mouse && mouse.Button != MouseButtons.Left)) return;
+                if (suppressClick || closePressed || strip.IsDragging(this) || (e is MouseEventArgs mouse && mouse.Button != MouseButtons.Left)) return;
                 base.OnClick(e);
                 strip.Queue(() => strip.Select(Session));
             }
@@ -344,7 +387,8 @@ namespace ExplorerTabs.App
                 // A cancelled gesture (Esc / lost capture) must not turn into a later selection click.
                 if (!Capture && !releasingMouse)
                 {
-                    suppressClick = suppressClick || strip.IsDragging(this);
+                    suppressClick = suppressClick || closePressed || strip.IsDragging(this);
+                    closePressed = false;
                     // Another tab may receive capture when this one is disposed/rebuilt.
                     if (strip.source == this) strip.CancelPointer();
                 }
@@ -368,8 +412,8 @@ namespace ExplorerTabs.App
             }
             protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
             {
-                if (keyData == Keys.Escape && strip.IsInteracting)
-                { suppressClick = true; strip.CancelPointer(); Capture = false; return true; }
+                if (keyData == Keys.Escape && (strip.IsInteracting || closePressed))
+                { suppressClick = true; closePressed = false; strip.CancelPointer(); Capture = false; return true; }
                 return base.ProcessCmdKey(ref msg, keyData);
             }
         }

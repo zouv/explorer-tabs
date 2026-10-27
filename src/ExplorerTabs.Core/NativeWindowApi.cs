@@ -55,10 +55,19 @@ namespace ExplorerTabs.Core
             }
         }
 
+        /// <summary>A genuine Shell cabinet window. Explorer normally hosts it, but when the
+        /// shell's registered class factory is not available (observed shortly after boot)
+        /// COM activates the registered LocalServer32 host instead:
+        /// rundll32.exe shell32.dll,SHCreateLocalServerRunDll. Accept only those two
+        /// Windows-owned host images; the exact HWND/PID/TID/start/image identity still
+        /// has to match, and window titles or enumeration order are never used.</summary>
         public static bool IsExplorer(WindowIdentity identity) =>
             (identity.ClassName == "CabinetWClass" || identity.ClassName == "ExploreWClass") &&
-            string.Equals(identity.ImagePath, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-                "explorer.exe"), StringComparison.OrdinalIgnoreCase);
+            (IsHostImage(identity.ImagePath, Environment.SpecialFolder.Windows, "explorer.exe") ||
+             IsHostImage(identity.ImagePath, Environment.SpecialFolder.System, "rundll32.exe"));
+
+        private static bool IsHostImage(string imagePath, Environment.SpecialFolder folder, string fileName) =>
+            string.Equals(imagePath, Path.Combine(Environment.GetFolderPath(folder), fileName), StringComparison.OrdinalIgnoreCase);
 
         public static IReadOnlyList<WindowIdentity> DiscoverExplorers()
         {

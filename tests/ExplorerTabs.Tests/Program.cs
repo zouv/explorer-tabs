@@ -27,7 +27,10 @@ namespace ExplorerTabs.Tests
                 { RenderUi(args[1], args.Length == 3 ? int.Parse(args[2]) : (int?)null); return 0; }
                 if (args.Length >= 2 && args[0] == "--render-tabs")
                 { RenderUi(args[1], args.Length == 3 ? int.Parse(args[2]) : (int?)null, true); return 0; }
+                if (args.Length >= 2 && args[0] == "--render-tabs-hover")
+                { RenderUi(args[1], args.Length == 3 ? int.Parse(args[2]) : (int?)null, true, true); return 0; }
                 if (args.Length == 2 && args[0] == "--render-rename") { RenderRename(args[1]); return 0; }
+                if (args.Length == 2 && args[0] == "--render-about") { RenderAbout(args[1]); return 0; }
                 if (args.Length == 2 && args[0] == "--render-settings") { RenderSettings(args[1]); return 0; }
                 if (args.Length >= 2 && args[0] == "--render-workspace") { RenderWorkspace(args[1], args.Length == 3 ? int.Parse(args[2]) : 1100); return 0; }
                 if (args.Length == 2 && args[0] == "--render-picker") { RenderPicker(args[1]); return 0; }
@@ -146,6 +149,16 @@ namespace ExplorerTabs.Tests
             Check(host.Active == first && api.Visible.Contains(1) && !api.Visible.Contains(2), "failure showing next tab preserves prior tab");
             api.FailShowHandle = 0; host.DetachAll();
 
+            var cabinet = Identity(1);
+            Check(NativeWindowApi.IsExplorer(cabinet), "explorer.exe-hosted cabinet window is a genuine Shell browser");
+            cabinet.ImagePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "rundll32.exe");
+            Check(NativeWindowApi.IsExplorer(cabinet), "registered rundll32 ShellBrowserWindow host is accepted");
+            cabinet.ImagePath = Path.Combine(Path.GetTempPath(), "rundll32.exe");
+            Check(!NativeWindowApi.IsExplorer(cabinet), "rundll32 outside the Windows directory is rejected");
+            cabinet.ImagePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "rundll32.exe");
+            cabinet.ClassName = "NotExplorer";
+            Check(!NativeWindowApi.IsExplorer(cabinet), "non-cabinet window is never treated as a Shell browser");
+
             ShortcutTests();
             JournalTests();
             RestorePresentationTests();
@@ -211,6 +224,16 @@ namespace ExplorerTabs.Tests
                 "detaching background tabs preserves active tab");
             Check(TabManagementPolicy.Successor(host.Sessions, first, host.Sessions) == null,
                 "detaching all leaves no preferred active tab");
+            Check(TabManagementPolicy.CloseSuccessor(host.Sessions, first, first) == second,
+                "closing an active tab focuses its left neighbour");
+            Check(TabManagementPolicy.CloseSuccessor(host.Sessions, second, second) == first,
+                "closing the leftmost active tab falls back to the right neighbour");
+            Check(TabManagementPolicy.CloseSuccessor(host.Sessions, third, first) == third,
+                "closing a background tab keeps the current active tab");
+            Check(TabManagementPolicy.CloseSuccessor(new[] { first }, first, first) == null,
+                "closing the only tab leaves no successor");
+            Check(TabManagementPolicy.CloseSuccessor(host.Sessions, first, first, new[] { third }) == third,
+                "close successor skips windows that disappeared in the same poll");
             store.Fail = false;
             Check(host.DetachTabs(first, TabDetachScope.ToRight).Count == 0 && host.Sessions.SequenceEqual(new[] { second, first }),
                 "batch right-side detach restores only selected windows");
@@ -250,6 +273,8 @@ namespace ExplorerTabs.Tests
             third = Add(host, 3); api.FailRestoreHandle = 3; Throws(() => host.Detach(third));
             Check(TabManagementPolicy.Successor(host.Sessions, first, new[] { first }) == null,
                 "adjacent successor skips unresolved recovery tabs");
+            Check(TabManagementPolicy.CloseSuccessor(host.Sessions, first, first) == null,
+                "close successor skips unresolved recovery tabs");
             host.MoveTab(third, 0);
             Check(third.State == SessionState.RecoveryRequired && store.Snapshots.Contains(third.Snapshot),
                 "sorting unresolved tab preserves its state and recovery snapshot");
@@ -526,9 +551,30 @@ namespace ExplorerTabs.Tests
                     (WindowSession)b.GetType().GetProperty("Session")!.GetValue(b)! == session);
                 int TabCount() => TabControls(strip).Length;
                 bool Interacting() => (bool)stripType.GetProperty("IsInteracting")!.GetValue(strip)!;
-                Refresh(); form.Width = 720;
-                typeof(Control).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, new object[] { 2, true });
-                form.CreateControl(); form.PerformLayout();
+                Refresh(); form.Width = 720; MakeHidden(form);
+                var tipMethod = stripType.GetMethod("TooltipFor", BindingFlags.Static | BindingFlags.NonPublic)!;
+                var plainTip = (string)tipMethod.Invoke(null, new object?[] { first, null })!;
+                Check(plainTip.Contains("目录：未缓存") && !plainTip.Contains("拖动排序"),
+                    "tab tooltip shows the cached-directory line and no drag-sort instructions");
+                var cache = (Dictionary<WindowSession, string>)type.GetField("directoryCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
+                cache[first] = @"D:\Cached";
+                Refresh();
+                var tips = (ToolTip)stripType.GetField("tips", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(strip)!;
+                Check(tips.GetToolTip(ButtonFor(first)).Contains(@"目录：D:\Cached"),
+                    "tab tooltip reads the cached Explorer directory");
+                var closeButton = ButtonFor(second);
+                closeButton.GetType().GetMethod("OnMouseEnter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(closeButton, new object[] { EventArgs.Empty });
+                var hitClose = closeButton.GetType().GetMethod("HitClose", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Check((bool)hitClose.Invoke(closeButton, new object[] { new Point(closeButton.Width - 10, closeButton.Height / 2) })!,
+                    "hovering a tab exposes a close hit target at its right edge");
+                Check(!(bool)hitClose.Invoke(closeButton, new object[] { new Point(10, closeButton.Height / 2) })!,
+                    "the tab body itself is not the close hit target");
+                closeButton.GetType().GetMethod("OnMouseDown", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(closeButton, new object[] { new MouseEventArgs(MouseButtons.Left, 1, closeButton.Width - 10, closeButton.Height / 2, 0) });
+                Check(!Interacting(), "pressing the close glyph does not arm a tab drag/selection gesture");
+                closeButton.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(closeButton, new object[] { EventArgs.Empty });
+                Check(host.Active == second, "pressing the close glyph never selects the tab");
                 Check(!strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible &&
                     strip.Controls.Cast<Control>().All(c => c.Top >= 0 && c.Bottom <= strip.ClientSize.Height),
                     "short adaptive titles fit the minimum-width host without an unnecessary scrollbar");
@@ -621,8 +667,7 @@ namespace ExplorerTabs.Tests
             var renameType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.RenameTabDialog", true)!;
             using (var dialog = (Form)Activator.CreateInstance(renameType, "Original")!)
             {
-                typeof(Control).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, new object[] { 2, true });
-                dialog.CreateControl(); dialog.PerformLayout();
+                MakeHidden(dialog);
                 Check(!dialog.ShowIcon && HasWindowRegion(dialog), "rename dialog removes the inherited title-bar icon and applies a small rounded region");
                 var input = (TextBox)renameType.GetField("name", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dialog)!;
                 var error = (Label)renameType.GetField("error", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dialog)!;
@@ -636,8 +681,7 @@ namespace ExplorerTabs.Tests
             }
             using (var dialog = (Form)Activator.CreateInstance(renameType, "Unchanged")!)
             {
-                typeof(Control).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, new object[] { 2, true });
-                dialog.CreateControl(); ((Button)dialog.CancelButton!).PerformClick();
+                MakeHidden(dialog); ((Button)dialog.CancelButton!).PerformClick();
                 Check(dialog.DialogResult == DialogResult.Cancel && (string)renameType.GetProperty("TabTitle")!.GetValue(dialog)! == "Unchanged",
                     "rename cancellation returns without applying a new title");
             }
@@ -653,11 +697,17 @@ namespace ExplorerTabs.Tests
             using (var form = (Form)Activator.CreateInstance(type, "常用目录 · 项目资料")!) RenderHiddenForm(form, output);
             Console.WriteLine("Rendered rename dialog without showing it: " + output);
         }
+        private static void RenderAbout(string output)
+        {
+            Application.EnableVisualStyles();
+            var type = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.AboutDialog", true)!;
+            using (var form = (Form)Activator.CreateInstance(type)!) RenderHiddenForm(form, output);
+            Console.WriteLine("Rendered about dialog without showing it: " + output);
+        }
 
         private static void RenderHiddenForm(Form form, string output)
         {
-            typeof(Control).GetMethod("SetState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, new object[] { 2, true });
-            form.CreateControl(); form.PerformLayout();
+            MakeHidden(form);
             using (var bitmap = new Bitmap(form.Width, form.Height))
             {
                 form.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
@@ -840,7 +890,7 @@ namespace ExplorerTabs.Tests
             }
         }
 
-        private static void RenderUi(string output, int? width, bool populated = false)
+        private static void RenderUi(string output, int? width, bool populated = false, bool hoverTab = false)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -858,6 +908,17 @@ namespace ExplorerTabs.Tests
                     controller.RenameTab(first, "常用项目 & 资料");
                     controller.Activate(second, Bounds);
                     type.GetMethod("RefreshTabs", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, null);
+                    if (hoverTab)
+                    {
+                        var strip = (Control)type.GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
+                        var button = strip.Controls.Cast<Control>().FirstOrDefault(c => c.GetType().Name == "TabButton");
+                        if (button != null)
+                        {
+                            button.GetType().GetField("hovered", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(button, true);
+                            button.GetType().GetField("closeHovered", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(button, true);
+                            button.Invalidate();
+                        }
+                    }
                 }
                 // Test-only managed visibility; never Show or trigger Shown/global keyboard hook.
                 RenderHiddenForm(form, output);
@@ -961,11 +1022,25 @@ namespace ExplorerTabs.Tests
             finally { DeleteObject(region); }
         }
 
-        private static Form Synthetic(string title) => new Form
+        private static Form Synthetic(string title) => new SyntheticForm
         {
             Text = "ExplorerTabs test " + title, ShowInTaskbar = true, Opacity = 0,
             StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000), Size = new Size(640, 480)
         };
+        /// <summary>Ownerless top-level window kept out of the taskbar/Alt+Tab without
+        /// WinForms' ShowInTaskbar=false parking owner (attach validation requires no owner).</summary>
+        private sealed class SyntheticForm : Form
+        {
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    var parameters = base.CreateParams;
+                    parameters.ExStyle = (parameters.ExStyle | 0x80) & ~0x40000; // WS_EX_TOOLWINDOW, no WS_EX_APPWINDOW
+                    return parameters;
+                }
+            }
+        }
 
         private sealed class FakeRepaint : IWindowRepaintService
         {

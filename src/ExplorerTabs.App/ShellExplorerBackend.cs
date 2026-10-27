@@ -97,7 +97,14 @@ namespace ExplorerTabs.App
             try { return new BrowserReference((IWebBrowser2Native)instance, trace); }
             catch { Release(instance); throw; }
         }
-        public WindowIdentity Inspect(long handle) => NativeWindowApi.Inspect(new IntPtr(handle));
+        public WindowIdentity Inspect(long handle)
+        {
+            var identity = NativeWindowApi.Inspect(new IntPtr(handle));
+            // Records which host served the new ShellBrowserWindow (explorer.exe or the
+            // registered rundll32 local server) without affecting the identity check.
+            trace?.Invoke($"Creation inspect; HWND=0x{handle:X}; class={identity.ClassName}; image={identity.ImagePath}; PID={identity.ProcessId}");
+            return identity;
+        }
         public bool Matches(WindowIdentity identity) => windows.Matches(identity);
         public void Pause(CancellationToken cancellation)
         { Application.DoEvents(); cancellation.ThrowIfCancellationRequested(); System.Threading.Thread.Sleep(50); cancellation.ThrowIfCancellationRequested(); }

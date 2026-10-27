@@ -27,13 +27,15 @@ namespace ExplorerTabs.App
         private int queuedShortcut;
         private bool refreshing;
         private bool closing;
+        private DateTime closeAllStarted;
+        private bool restoringOnExit;
+        private bool exitByClosingSessions;
         private int modalDepth;
         private AppSettings settings;
         private readonly IAppSettingsStore? settingsStore;
         private readonly IExplorerTabService explorerTabs;
         private CancellationTokenSource? creation;
         private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入已有窗口…");
-        private readonly IconButton preferences = new IconButton(UiGlyph.Settings, "设置…");
         private readonly IconButton newTab = new IconButton(UiGlyph.NewTab, "新建标签") { Primary = true };
         private readonly IconButton cancelCreation = new IconButton(UiGlyph.Cancel, "取消操作") { Visible = false };
 
@@ -54,7 +56,7 @@ namespace ExplorerTabs.App
             // Left group: actions that open menus. Right group: commands that open dialogs.
             var toolbarHost = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = HostTheme.Canvas };
             var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, Height = 36, AutoSize = false, Padding = new Padding(8, 2, 8, 2), WrapContents = false };
-            var toolbarRight = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 82, Height = 36, AutoSize = false, Padding = new Padding(0, 2, 8, 2), WrapContents = false, FlowDirection = FlowDirection.LeftToRight };
+            var toolbarRight = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 48, Height = 36, AutoSize = false, Padding = new Padding(0, 2, 8, 2), WrapContents = false, FlowDirection = FlowDirection.LeftToRight };
             toolbarHost.Controls.Add(toolbar);
             toolbarHost.Controls.Add(toolbarRight);
             var add = addWindows;
@@ -64,11 +66,10 @@ namespace ExplorerTabs.App
             mode.SelectedIndex = settings.Mode == HostingMode.Embedded ? 0 : 1;
             mode.TabStop = false; shortcuts.TabStop = false;
             shortcuts.Text = "快捷键"; shortcuts.Checked = settings.ShortcutsEnabled;
-            add.Click += (_, __) => AddWindows();
+            add.Click += (_, __) => ShowAddWindowsMenu();
             newTab.Click += async (_, __) => await CreateTabAsync(null);
             cancelCreation.Click += (_, __) => { creation?.Cancel(); workspaceOperation?.Cancel(); foreach (var close in closeReading.Values.ToArray()) close.Cancel(); };
 
-            preferences.Click += (_, __) => ShowSettings();
             tabs.Padding = new Padding(2, 2, 2, 0);
             tabs.Selected += SelectTab;
             tabs.MiddleClose += session => QueueUi(() => CloseTabAsync(session));
@@ -214,7 +215,7 @@ namespace ExplorerTabs.App
         private void SetCreationControls(bool pending)
         {
             newTab.Enabled = !pending && workspaceOperation == null && !explorerTabs.IsBusy;
-            addWindows.Enabled = !pending && workspaceOperation == null; preferences.Enabled = !pending && workspaceOperation == null;
+            addWindows.Enabled = !pending && workspaceOperation == null;
             cancelCreation.Visible = pending || workspaceOperation != null;
             foreach (WelcomePanel welcome in content.Controls) welcome.SetPending(pending || workspaceOperation != null || explorerTabs.IsBusy);
             mode.Enabled = !pending && workspaceOperation == null && controller.Sessions.Count == 0;
@@ -246,13 +247,20 @@ namespace ExplorerTabs.App
         }
         private void ShowSettings()
         {
-            if (workspaceOperation != null || exitPreparing) return;
+            if (workspaceOperation != null || exitPreparing || creation != null || explorerTabs.IsBusy) return;
             using (EnterModal())
             using (var dialog = new SettingsDialog(CurrentSettings(), controller.Sessions.Count > 0, settingsStore != null))
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 RunSafely("保存设置失败，旧设置保持不变", () => ApplySettings(dialog.Result));
             }
+        }
+        private void ShowAbout()
+        {
+            if (exitPreparing) return;
+            using (EnterModal())
+            using (var dialog = new AboutDialog())
+                dialog.ShowDialog(this);
         }
         private void ApplySettings(AppSettings candidate)
         {
@@ -275,9 +283,9 @@ namespace ExplorerTabs.App
             }
         }
 
-        private void AddWindows()
+        private void OpenWindowPicker()
         {
-            if (workspaceOperation != null || exitPreparing) return;
+            if (workspaceOperation != null || exitPreparing || creation != null) return;
             using (EnterModal())
             using (var picker = new WindowPicker(controller.Sessions.Select(s => s.Identity.Handle)))
             {
@@ -288,6 +296,7 @@ namespace ExplorerTabs.App
 
         private void AttachSelectedWindows(IEnumerable<WindowIdentity> selectedWindows)
         {
+            if (workspaceOperation != null || exitPreparing || creation != null) return;
             foreach (var identity in selectedWindows)
             {
                 if (!NativeWindowApi.IsExplorer(identity)) continue;
@@ -372,9 +381,14 @@ namespace ExplorerTabs.App
             try
             {
                 var beforePrune = controller.Sessions.ToArray();
+                var activeBefore = controller.Active;
                 int previousCount = controller.Sessions.Count;
                 var errors = controller.PruneLost();
                 foreach (string error in errors) log.Write("Prune failed: " + error);
+                // A user-closed active window is pruned here. Prefer its left neighbour instead
+                // of the first tab; closing a non-active tab leaves the active tab untouched.
+                WindowSession? preferred = controller.Active == null && activeBefore != null
+                    ? TabManagementPolicy.CloseSuccessor(beforePrune, activeBefore, activeBefore, controller.Sessions) : null;
                 CompleteClosedTabs(beforePrune);
                 bool changed = previousCount != controller.Sessions.Count;
                 foreach (var session in controller.Sessions)
@@ -383,9 +397,26 @@ namespace ExplorerTabs.App
                     if (!string.IsNullOrEmpty(title) && title != session.Title)
                     { session.Title = title; changed = true; }
                 }
-                EnsureActive();
+                EnsureActive(preferred: preferred);
                 SyncShortcutScope();
                 if (changed) RefreshTabs();
+                if (closeAllStarted != default)
+                {
+                    if (controller.Sessions.Count == 0 && !closing)
+                    {
+                        closeAllStarted = default;
+                        BeginInvoke(new Action(Close));
+                    }
+                    else if (DateTime.UtcNow - closeAllStarted > TimeSpan.FromSeconds(10))
+                    {
+                        closeAllStarted = default;
+                        exitByClosingSessions = false;
+                        exitPreparing = false;
+                        RefreshTabs();
+                        status.Text = "仍有会话窗口未关闭，已取消退出；请关闭阻挡的对话框后重试。";
+                        log.Write("Exit by closing session windows timed out; host kept open.");
+                    }
+                }
                 MaybeAutosave();
             }
             catch (Exception error) { log.Write("Monitor failed", error); }
@@ -397,7 +428,8 @@ namespace ExplorerTabs.App
             refreshing = true;
             try
             {
-                tabs.Render(controller.Sessions, controller.Active, CreateTabMenu);
+                tabs.Render(controller.Sessions, controller.Active, CreateTabMenu,
+                    session => directoryCache.TryGetValue(session, out var directory) ? directory : null);
                 foreach (WelcomePanel welcome in content.Controls) welcome.Visible = controller.Sessions.Count == 0;
                 mode.Enabled = controller.Sessions.Count == 0 && creation == null && workspaceOperation == null;
                 UpdateStatus();
@@ -522,11 +554,16 @@ namespace ExplorerTabs.App
             if (creation != null || workspaceOperation != null) return;
             status.Text =
             $"{controller.Sessions.Count} 个标签 · {(SelectedMode == HostingMode.Embedded ? "实验性嵌入" : "顶层分组：保留 Explorer 任务栏项")}" +
-            " · 退出 / 分离会恢复窗口";
+            " · 关闭会结束会话窗口；分离会恢复窗口";
         }
 
         private void OnClosing(object? sender, FormClosingEventArgs e)
         {
+            if (!restoringOnExit && e.CloseReason == CloseReason.UserClosing)
+            {
+                CloseSessionsForExit(e);
+                return;
+            }
             creation?.Cancel();
             closing = true; modalDepth++; SyncShortcutScope(); monitor.Stop();
             var identities = controller.Sessions.Select(s => s.Identity).ToArray();
@@ -537,7 +574,7 @@ namespace ExplorerTabs.App
             if (controller.Sessions.Count > 0)
             {
                 e.Cancel = true;
-                closing = false; exitCaptureDone = false; modalDepth--; monitor.Start();
+                closing = false; exitCaptureDone = false; restoringOnExit = false; modalDepth--; monitor.Start();
                 RefreshTabs();
                 ReportError("还有窗口没有完成恢复，已阻止退出。请重试“分离全部”。", new InvalidOperationException(string.Join("\n", errors)));
             }
@@ -547,6 +584,47 @@ namespace ExplorerTabs.App
                 log.Write("All windows detached; host closing.");
             }
         }
+
+        /// <summary>X / Alt+F4 / 应用菜单“关闭”：请求精确关闭所有会话窗口，全部消失后退出。
+        /// 任一窗口未消失时保持宿主运行，不 kill、不恢复、不猜测其他窗口。</summary>
+        private void CloseSessionsForExit(FormClosingEventArgs e)
+        {
+            if (controller.Sessions.Count == 0)
+            {
+                CompleteExit("All session windows closed; host closing.");
+                return;
+            }
+            e.Cancel = true;
+            if (closeAllStarted != default) return;
+            closeAllStarted = DateTime.UtcNow;
+            exitByClosingSessions = true;
+            exitPreparing = true;
+            creation?.Cancel(); workspaceOperation?.Cancel();
+            SyncShortcutScope();
+            int requested = 0;
+            foreach (var session in controller.Sessions.Where(s => s.State == SessionState.Attached).ToArray())
+            {
+                try { controller.RequestClose(session); requested++; }
+                catch (Exception error) { log.Write($"Exit close request failed HWND=0x{session.Identity.Handle:X}", error); }
+            }
+            status.Text = requested > 0 ? "正在关闭所有会话窗口并退出…" : "没有可关闭的会话窗口；请使用“分离窗口”恢复后退出。";
+            log.Write($"Exit by closing session windows; requested={requested}; total={controller.Sessions.Count}");
+        }
+
+        private void CompleteExit(string reason)
+        {
+            closeAllStarted = default; restoringOnExit = false;
+            closing = true; modalDepth++; SyncShortcutScope(); monitor.Stop();
+            presentation.Snapshot("closing-after-close-all");
+            SaveSettingsOnExit();
+            log.Write(reason);
+        }
+
+        /// <summary>User close (X / Alt+F4 / menu) closes the tab Explorer windows.</summary>
+        private void RequestExitByClosingSessions() { restoringOnExit = false; Close(); }
+
+        /// <summary>Explicit restore-and-exit path from the detach menu.</summary>
+        private void CloseRestoringWindows() { exitByClosingSessions = false; restoringOnExit = true; Close(); }
 
         public void EmergencyDetach()
         {

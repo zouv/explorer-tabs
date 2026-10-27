@@ -142,7 +142,7 @@ namespace ExplorerTabs.App
         }
         private async void OnClosingWithSession(object? sender, FormClosingEventArgs e)
         {
-            if (!exitCaptureDone && settings.RememberSession && workspaceTouched && libraryStore != null)
+            if (!exitByClosingSessions && !exitCaptureDone && settings.RememberSession && workspaceTouched && libraryStore != null)
             {
                 e.Cancel = true; if (exitPreparing) return; exitPreparing = true; SyncShortcutScope(); creation?.Cancel(); workspaceOperation?.Cancel();
                 foreach (var close in closeReading.Values.ToArray()) close.Cancel();

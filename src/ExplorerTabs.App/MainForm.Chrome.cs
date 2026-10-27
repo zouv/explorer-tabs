@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using ExplorerTabs.Core;
 
 namespace ExplorerTabs.App
 {
@@ -24,18 +25,18 @@ namespace ExplorerTabs.App
             Padding = new Padding(1); BackColor = HostTheme.Chrome; DoubleBuffered = true;
             chrome = new Panel { Dock = DockStyle.Top, Height = ChromePixels(36), BackColor = HostTheme.Chrome };
             var brandArea = new Panel { Dock = DockStyle.Left, Width = ChromePixels(36) };
-            var brand = new IconButton(UiGlyph.App, "ExplorerTabs · 系统菜单") { Dock = DockStyle.Top, Height = ChromePixels(36), TabStop = false, Margin = Padding.Empty };
+            var brand = new IconButton(UiGlyph.App, "ExplorerTabs · 应用菜单") { Dock = DockStyle.Top, Height = ChromePixels(36), TabStop = false, Margin = Padding.Empty };
             brandArea.Controls.Add(brand);
-            brand.Click += (_, __) => ShowHostSystemMenu(brand.PointToScreen(new Point(0, brand.Height)));
-            chromeTips.SetToolTip(brand, "ExplorerTabs · 窗口菜单");
+            brand.Click += (_, __) => ShowAppMenu(brand.PointToScreen(new Point(0, brand.Height)));
+            chromeTips.SetToolTip(brand, "ExplorerTabs · 应用菜单");
             var captions = new FlowLayoutPanel { Dock = DockStyle.Right, Width = ChromePixels(126), Height = ChromePixels(36), WrapContents = false, Padding = Padding.Empty, Margin = Padding.Empty };
             var minimize = new IconButton(UiGlyph.Minimize, "最小化") { Caption = true };
             maximizeButton = new IconButton(UiGlyph.Maximize, "最大化 / 还原") { Caption = true };
-            var close = new IconButton(UiGlyph.Close, "恢复窗口并退出") { Caption = true };
+            var close = new IconButton(UiGlyph.Close, "关闭所有会话窗口并退出应用") { Caption = true };
             foreach (var b in new[] { minimize, maximizeButton, close }) { b.Size = new Size(ChromePixels(42), ChromePixels(34)); b.Margin = Padding.Empty; chromeTips.SetToolTip(b, b.Text); captions.Controls.Add(b); }
             minimize.Click += (_, __) => WindowState = FormWindowState.Minimized;
             maximizeButton.Click += (_, __) => ToggleMaximize();
-            close.Click += (_, __) => Close();
+            close.Click += (_, __) => RequestExitByClosingSessions();
             tabs.Dock = DockStyle.Fill; tabs.BackColor = HostTheme.Chrome;
             tabs.MouseDown += ChromeMouseDown; tabs.MouseDoubleClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleMaximize(); };
             chrome.Controls.Add(tabs); chrome.Controls.Add(captions); chrome.Controls.Add(brandArea);
@@ -48,19 +49,29 @@ namespace ExplorerTabs.App
         private void ChromeMouseDown(object? sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, new IntPtr(2), IntPtr.Zero); }
-            else if (e.Button == MouseButtons.Right) ShowHostSystemMenu(tabs.PointToScreen(e.Location));
+            else if (e.Button == MouseButtons.Right) ShowAppMenu(tabs.PointToScreen(e.Location));
         }
-        private void ShowHostSystemMenu(Point point)
+        private ContextMenuStrip CreateAppMenu()
         {
-            using (EnterModal())
-            {
-                IntPtr menu = GetSystemMenu(Handle, false);
-                const uint enabled = 0, disabled = 1;
-                EnableMenuItem(menu, 0xF120, WindowState == FormWindowState.Maximized ? enabled : disabled);
-                EnableMenuItem(menu, 0xF030, WindowState == FormWindowState.Maximized ? disabled : enabled);
-                int command = TrackPopupMenu(menu, 0x0100 | 0x0002, point.X, point.Y, 0, Handle, IntPtr.Zero);
-                if (command != 0) PostMessage(Handle, 0x0112, new IntPtr(command), IntPtr.Zero);
-            }
+            var menu = new ContextMenuStrip();
+            var settingsItem = menu.Items.Add("设置…", null, (_, __) => QueueMenuAction(ShowSettings));
+            settingsItem.Enabled = creation == null && workspaceOperation == null && !explorerTabs.IsBusy;
+            ShowShortcut(settingsItem, ShortcutChord(HostCommand.Settings));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("关于", null, (_, __) => QueueMenuAction(ShowAbout));
+            menu.Items.Add(new ToolStripSeparator());
+            var restoreItem = menu.Items.Add("关闭并还原窗口", null, (_, __) => QueueMenuAction(CloseRestoringWindows));
+            restoreItem.ToolTipText = "恢复所有会话窗口为独立 Explorer，然后退出应用。";
+            var closeItem = menu.Items.Add("关闭", null, (_, __) => QueueMenuAction(RequestExitByClosingSessions));
+            ShowShortcut(closeItem, "Alt+F4");
+            closeItem.ToolTipText = "关闭所有会话窗口并退出应用。";
+            menu.ShowItemToolTips = true;
+            return menu;
+        }
+        private void ShowAppMenu(Point screenPoint)
+        {
+            if (closing || exitPreparing) return;
+            ShowManagedMenuAtScreenPoint(CreateAppMenu(), screenPoint);
         }
         protected override CreateParams CreateParams
         {
@@ -120,9 +131,5 @@ namespace ExplorerTabs.App
         [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref FrameMargins margins);
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
         [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam);
-        [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam);
-        [DllImport("user32.dll")] private static extern IntPtr GetSystemMenu(IntPtr hwnd, bool revert);
-        [DllImport("user32.dll")] private static extern bool EnableMenuItem(IntPtr menu, uint item, uint flags);
-        [DllImport("user32.dll")] private static extern int TrackPopupMenu(IntPtr menu, uint flags, int x, int y, int reserved, IntPtr hwnd, IntPtr rect);
     }
 }

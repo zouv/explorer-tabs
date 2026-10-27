@@ -12,6 +12,7 @@ namespace ExplorerTabs.App
         internal static readonly Color Chrome = Color.FromArgb(233, 238, 245);
         internal static readonly Color Text = Color.FromArgb(43, 56, 76);
         internal static readonly Color Accent = Color.FromArgb(42, 103, 211);
+        internal static readonly Color DialogBorder = Color.FromArgb(196, 208, 226);
         internal static void StyleMenu(ContextMenuStrip menu)
         { menu.Renderer = new ToolStripProfessionalRenderer(new HostMenuColors()); menu.ShowImageMargin = false; menu.BackColor = Color.FromArgb(253, 254, 255); menu.ForeColor = Text; }
         internal static GraphicsPath Round(RectangleF r, float radius)
@@ -186,9 +187,22 @@ namespace ExplorerTabs.App
     /// <summary>Borderless dialog base: own rounded chrome plus the native drop shadow.</summary>
     internal class ShellDialog : Form
     {
+        protected ShellDialog()
+        {
+            DoubleBuffered = true;
+            SetStyle(ControlStyles.ResizeRedraw, true);
+        }
         protected override CreateParams CreateParams
         {
             get { var cp = base.CreateParams; cp.ClassStyle |= 0x00020000; return cp; } // CS_DROPSHADOW
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            // DialogStyle.Apply reserves a 1px padding ring; draw the border there so it
+            // stays visible even though the title bar and content fill the client area.
+            if (Padding.Left < 1 || Padding.Top < 1) return;
+            DialogStyle.DrawBorder(e.Graphics, ClientSize, DeviceDpi);
         }
     }
     internal sealed class DialogTitleBar : Panel
@@ -234,10 +248,20 @@ namespace ExplorerTabs.App
             form.FormBorderStyle = FormBorderStyle.None;
             form.ShowIcon = false;
             form.Icon = null;
+            // Keep a 1px ring outside the docked title bar/content for the custom border.
+            form.Padding = new Padding(1);
             form.Controls.Add(new DialogTitleBar(form));
             form.HandleCreated += (_, __) => Round(form);
             form.Shown += (_, __) => Round(form);
             form.SizeChanged += (_, __) => { if (form.IsHandleCreated) Round(form); };
+        }
+        internal static void DrawBorder(Graphics graphics, Size size, int dpi)
+        {
+            if (size.Width < 3 || size.Height < 3) return;
+            float radius = Math.Max(4, (float)Math.Round(CornerRadius * dpi / 96F));
+            using (var path = HostTheme.Round(new RectangleF(0.5F, 0.5F, size.Width - 1F, size.Height - 1F), radius))
+            using (var pen = new Pen(HostTheme.DialogBorder))
+                graphics.DrawPath(pen, path);
         }
         private static void Round(Form form)
         {

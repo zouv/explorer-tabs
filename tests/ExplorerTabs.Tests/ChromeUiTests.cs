@@ -41,7 +41,7 @@ namespace ExplorerTabs.Tests
                     var captions = chrome.Controls.OfType<FlowLayoutPanel>().Single(p => p != strip);
                     var capButtons = captions.Controls.OfType<Button>().ToArray();
                     Check(capButtons.Length == 3 && capButtons.All(b => b.AccessibleName!.Length > 0 && b.TabStop), "minimize/maximize/close remain accessible interactive buttons");
-                    Check(capButtons.Last().Text.Contains("恢复"), "caption close explicitly indicates restoration, not killing Explorer");
+                    Check(capButtons.Last().Text.Contains("关闭所有"), "caption close closes every session window and exits");
                     foreach (int width in new[] { 720, 1100, 1600 })
                     {
                         form.Width = width; form.PerformLayout(); strip.PerformLayout();
@@ -66,8 +66,8 @@ namespace ExplorerTabs.Tests
                     var leftCommands = toolbar.Controls.OfType<Button>().Select(b => b.AccessibleName).ToArray();
                     Check(leftCommands.Length >= 2 && leftCommands[0] == "加入已有窗口…" && leftCommands[1] == "分离窗口…",
                         "join and detach window actions stay adjacent in the left group");
-                    Check(toolbarRight.Controls.OfType<Button>().Select(b => b.AccessibleName).SequenceEqual(new[] { "搜索标签…", "设置…" }),
-                        "search and settings remain the right-aligned dialog group");
+                    Check(toolbarRight.Controls.OfType<Button>().Select(b => b.AccessibleName).SequenceEqual(new[] { "搜索标签…" }),
+                        "search remains the right-aligned dialog command");
                     foreach (Button button in toolbar.Controls.OfType<Button>().Concat(toolbarRight.Controls.OfType<Button>()).Concat(new[] { newButton }))
                         Check(!string.IsNullOrEmpty(tips.GetToolTip(button)) && !string.IsNullOrEmpty(button.AccessibleName), "command tooltip/accessibility exists: " + button.Text);
                     Check(newButton.Parent is FlowLayoutPanel stripParent && stripParent == strip &&
@@ -91,6 +91,32 @@ namespace ExplorerTabs.Tests
                     UiCall(form, "SetCreationControls", true);
                     Check(!newButton.Enabled && UiField<Button>(form, "cancelCreation").Visible, "async preparation disables new commands and exposes cancel glyph");
                     UiCall(form, "SetCreationControls", false);
+                    using (var appMenu = (ContextMenuStrip)UiCall(form, "CreateAppMenu")!)
+                    {
+                        var appTexts = appMenu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
+                        Check(appTexts.SequenceEqual(new[] { "设置…", "关于", "关闭并还原窗口", "关闭" }),
+                            "app menu exposes settings, about, restore-and-exit and close");
+                        Check(!appTexts.Any(t => t.Contains("移动") || t.Contains("大小") || t.Contains("最小化") || t.Contains("最大化")),
+                            "app menu no longer duplicates window layout commands");
+                        var restoreItem = appMenu.Items.OfType<ToolStripMenuItem>().Single(i => i.Text == "关闭并还原窗口");
+                        Check(restoreItem.ToolTipText.Contains("恢复所有会话窗口"),
+                            "restore-and-exit menu item explains that windows stay open");
+                        var closeItem = appMenu.Items.OfType<ToolStripMenuItem>().Single(i => i.Text == "关闭");
+                        Check(closeItem.ShortcutKeyDisplayString == "Alt+F4" && closeItem.ToolTipText.Contains("关闭所有会话窗口"),
+                            "app menu close advertises Alt+F4 and explains the close-all behaviour");
+                    }
+                }
+                var aboutType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.AboutDialog", true)!;
+                using (var about = (Form)Activator.CreateInstance(aboutType)!)
+                {
+                    MakeHidden(about);
+                    Check(about.Text.Contains("ExplorerTabs") && about.Padding.All == 1 && HasWindowRegion(about),
+                        "about dialog keeps the shared 1px border ring and rounded region");
+                    var version = (Label)aboutType.GetField("versionLabel", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(about)!;
+                    Check(version.Text.Contains(Assembly.Load("ExplorerTabs").GetName().Version!.ToString(3)),
+                        "about dialog shows the assembly version");
+                    var logo = (PictureBox)aboutType.GetField("logo", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(about)!;
+                    Check(logo.Image != null, "about dialog shows the embedded application icon");
                 }
                 AdaptiveTabWidthsSmoke(dir);
                 var hit = MainType.GetMethod("ChromeHitTest", BindingFlags.Static | BindingFlags.NonPublic)!;

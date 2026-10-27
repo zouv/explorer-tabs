@@ -136,6 +136,11 @@ namespace ExplorerTabs.Tests
             Check(Throws(() => RunCreate(backend, source: Identity(1))) is InvalidOperationException && !backend.Events.Contains("create"), "missing source browser does not fall back to a guessed folder");
             backend = new CreationBackend(); backend.Inspected = Identity(10); backend.Inspected.ClassName = "NotExplorer";
             Check(Throws(() => RunCreate(backend)) is InvalidOperationException && backend.Browser.Navigated == null, "wrong window class rejected before navigation");
+            backend = new CreationBackend(); backend.Inspected = Identity(10);
+            backend.Inspected.ImagePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "rundll32.exe");
+            result = RunCreate(backend);
+            Check(result.Identity.Handle == 10 && backend.Browser.Navigated == @"C:\New",
+                "new ShellBrowserWindow served by the registered rundll32 host is accepted and navigated");
             backend = new CreationBackend(); backend.ValidIdentity = false;
             Check(Throws(() => RunCreate(backend)) is InvalidOperationException && backend.Browser.Navigated == null, "recycled dedicated HWND rejected before navigation");
             backend = new CreationBackend(); backend.Browser.OnNavigate = () => backend.Browser.CurrentHandle = 11;

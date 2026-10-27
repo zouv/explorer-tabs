@@ -47,6 +47,21 @@ namespace ExplorerTabs.Core
                 sessions.Take(Math.Max(index, 0)).Reverse().FirstOrDefault(available.Contains) ?? available.FirstOrDefault();
         }
 
+        /// <summary>Tab to activate after a window disappears: nearest left neighbour first,
+        /// then the right neighbour. Closing a non-active tab keeps the current active tab.</summary>
+        public static WindowSession? CloseSuccessor(IReadOnlyList<WindowSession> sessions, WindowSession? active, WindowSession closing,
+            IReadOnlyCollection<WindowSession>? available = null)
+        {
+            if (active != null && active != closing && sessions.Contains(active) && active.State == SessionState.Attached)
+                return active;
+            int index = sessions.ToList().IndexOf(closing);
+            if (index < 0) return active;
+            bool Eligible(WindowSession session) => session != closing && session.State == SessionState.Attached &&
+                session.CloseRequestedUtc == null && (available == null || available.Contains(session));
+            return sessions.Take(index).Reverse().FirstOrDefault(Eligible) ??
+                sessions.Skip(index + 1).FirstOrDefault(Eligible);
+        }
+
         public static bool StartsDrag(Point origin, Point current, Size threshold) =>
             Math.Abs((long)current.X - origin.X) > Math.Max(1, threshold.Width) / 2 ||
             Math.Abs((long)current.Y - origin.Y) > Math.Max(1, threshold.Height) / 2;

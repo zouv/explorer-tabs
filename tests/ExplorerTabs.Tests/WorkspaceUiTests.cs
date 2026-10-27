@@ -77,6 +77,9 @@ namespace ExplorerTabs.Tests
                 Check(disposeCloser.Calls.Count == 0 && closeHost.Sessions.Count == 1, "dispose cancels directory capture and never sends late close");
                 MenuLifetimeTests(directory);
                 LayoutAndDialogTests(directory);
+                HoverCloseTest(directory);
+                CloseFocusTests(directory);
+                ExitBehaviorTests(directory);
             }
             finally
             {
@@ -102,6 +105,14 @@ namespace ExplorerTabs.Tests
                     Check(menu.IsDisposed && child.IsDisposed && disposalCount == 1 && UiField<int>(form, "modalDepth") == 0, "next UI turn disposes menu tree exactly once and releases scope: " + reason);
                 }
                 Check(UiField<Dictionary<ContextMenuStrip, Action>>(form, "managedMenuCleanups").Count == 0 && UiField<HashSet<ContextMenuStrip>>(form, "closedManagedMenus").Count == 0, "repeated menu open/close leaves no owned menu or queued cleanup leak");
+                using (var screenMenu = new MenuLifecycleProbe())
+                {
+                    UiCall(form, "ShowManagedMenuAtScreenPoint", screenMenu, new Point(200, 200));
+                    Check(UiField<int>(form, "modalDepth") == 1, "screen-point app menu opens with modal scope");
+                    screenMenu.FinishClose(ToolStripDropDownCloseReason.AppClicked);
+                    Application.DoEvents();
+                    Check(screenMenu.IsDisposed && UiField<int>(form, "modalDepth") == 0, "screen-point app menu disposes after the next UI turn");
+                }
                 using (var cancelled = new MenuLifecycleProbe())
                 {
                     cancelled.Opening += (_, e) => e.Cancel = true;
@@ -200,6 +211,68 @@ namespace ExplorerTabs.Tests
         }
         private static object? UiAnyCall(object target, string method, params object?[] arguments) =>
             target.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(target, arguments);
+        private static void HoverCloseTest(string directory)
+        {
+            var api = new FakeWindows(); var closer = new TestCloser(); var host = new HostController(api, new FakeStore(), closer);
+            var one = Add(host, 1); host.Activate(one, Bounds);
+            using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore()))
+            {
+                form.Width = 720; UiCall(form, "RefreshTabs"); form.PerformLayout();
+                var tabs = UiField<FlowLayoutPanel>(form, "tabs");
+                var button = TabControls(tabs).Single();
+                var buttonType = button.GetType();
+                buttonType.GetMethod("OnMouseEnter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(button, new object[] { EventArgs.Empty });
+                var point = new Point(button.Width - 10, button.Height / 2);
+                var mouse = new MouseEventArgs(MouseButtons.Left, 1, point.X, point.Y, 0);
+                buttonType.GetMethod("OnMouseDown", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(button, new object[] { mouse });
+                buttonType.GetMethod("OnMouseUp", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(button, new object[] { mouse });
+                for (int i = 0; i < 40 && closer.Calls.Count == 0; i++) { Application.DoEvents(); Thread.Sleep(10); }
+                Check(closer.Calls.Count == 1 && closer.Calls[0] == 1, "hover close button queues a precise Explorer close");
+            }
+            host.DetachAll();
+        }
+
+        private static void CloseFocusTests(string directory)
+        {
+            var api = new FakeWindows(); var host = new HostController(api, new FakeStore());
+            var one = Add(host, 1); var two = Add(host, 2); var three = Add(host, 3);
+            host.Activate(two, Bounds);
+            using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore()))
+            {
+                api.Alive.Remove(2); UiCall(form, "PollWindows");
+                Check(host.Active == one, "closing the active middle tab focuses its left neighbour");
+                host.Activate(one, Bounds); api.Alive.Remove(1); UiCall(form, "PollWindows");
+                Check(host.Active == three, "closing the leftmost active tab falls back to the right neighbour");
+                api.Alive.Add(4); Add(host, 4); host.Activate(three, Bounds); api.Alive.Remove(4); UiCall(form, "PollWindows");
+                Check(host.Active == three, "closing a background tab keeps the active tab");
+            }
+            host.DetachAll();
+        }
+
+        private static void ExitBehaviorTests(string directory)
+        {
+            var api = new FakeWindows(); var closer = new TestCloser(); var host = new HostController(api, new FakeStore(), closer);
+            Add(host, 1); Add(host, 2);
+            using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore()))
+            {
+                form.Close();
+                Check(!form.IsDisposed && closer.Calls.Count == 2 && closer.Calls.Contains(1) && closer.Calls.Contains(2) &&
+                    !api.Events.Any(e => e.StartsWith("restore")),
+                    "user close requests every session window instead of restoring them");
+                api.Alive.Remove(1); api.Alive.Remove(2);
+                UiCall(form, "PollWindows"); Application.DoEvents();
+                Check(form.IsDisposed && host.Sessions.Count == 0, "host exits after every session window has closed");
+            }
+            var restoreApi = new FakeWindows(); var restoreHost = new HostController(restoreApi, new FakeStore());
+            Add(restoreHost, 1); Add(restoreHost, 2);
+            using (var form = WorkspaceForm(restoreHost, new WorkspaceService(), directory, new WorkspaceStore()))
+            {
+                UiCall(form, "CloseRestoringWindows"); Application.DoEvents();
+                Check(form.IsDisposed && restoreApi.Events.Contains("restore:1") && restoreApi.Events.Contains("restore:2"),
+                    "explicit restore-and-exit path detaches windows instead of closing them");
+            }
+        }
+
         private static void LayoutAndDialogTests(string directory)
         {
             var api = new FakeWindows(); var host = new HostController(api, new FakeStore());
@@ -226,6 +299,13 @@ namespace ExplorerTabs.Tests
             using (var dialog = (Form)Activator.CreateInstance(settingsType, new AppSettings(), false, true)!)
             {
                 MakeHidden(dialog); Check(!dialog.ShowIcon && HasWindowRegion(dialog), "settings dialog removes the inherited title-bar icon and applies a small rounded region");
+                Check(dialog.Padding.All == 1, "settings dialog reserves the shared 1px border ring");
+                using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
+                {
+                    dialog.DrawToBitmap(bitmap, dialog.ClientRectangle);
+                    Check(bitmap.GetPixel(0, bitmap.Height / 2).ToArgb() == Color.FromArgb(196, 208, 226).ToArgb(),
+                        "settings dialog paints the shared border colour at its edge");
+                }
                 Check(!UiField<CheckBox>(dialog, "wrap").Checked && !UiField<NumericUpDown>(dialog, "maximumRows").Enabled, "settings expose wrap off by default with row limit disabled");
                 UiField<CheckBox>(dialog, "wrap").Checked = true; UiField<NumericUpDown>(dialog, "maximumRows").Value = 5;
                 var grid = UiField<DataGridView>(dialog, "bindings"); grid.Rows[1].Cells[1].Value = grid.Rows[0].Cells[1].Value; ((Button)dialog.AcceptButton!).PerformClick();
@@ -236,6 +316,13 @@ namespace ExplorerTabs.Tests
             using (var picker = CreatePicker())
             {
                 MakeHidden(picker); Check(!picker.ShowIcon && HasWindowRegion(picker), "picker dialog removes the inherited title-bar icon and applies a small rounded region");
+                Check(picker.Padding.All == 1, "picker dialog reserves the shared 1px border ring");
+                using (var bitmap = new Bitmap(picker.Width, picker.Height))
+                {
+                    picker.DrawToBitmap(bitmap, picker.ClientRectangle);
+                    Check(bitmap.GetPixel(0, bitmap.Height / 2).ToArgb() == Color.FromArgb(196, 208, 226).ToArgb(),
+                        "picker dialog paints the shared border colour at its edge");
+                }
                 var query = UiField<TextBox>(picker, "query"); var results = UiField<ListBox>(picker, "results");
                 query.Text = "项目 assets"; Check(results.Items.Count == 1 && picker.GetType().GetProperty("SelectedValue")!.GetValue(picker)!.Equals(2), "picker filters across title and path and retains exact session value");
                 query.Text = "no match"; UiCall(picker, "AcceptSelection"); Check(results.Items.Count == 0 && picker.DialogResult == DialogResult.None, "no-match picker cannot activate a stale selection");

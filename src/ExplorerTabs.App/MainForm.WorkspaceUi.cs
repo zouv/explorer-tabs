@@ -18,6 +18,7 @@ namespace ExplorerTabs.App
         private IWorkspaceLibraryStore? libraryStore;
         private WorkspaceLibrary library = new WorkspaceLibrary();
         private readonly Dictionary<WindowSession, string> directoryCache = new Dictionary<WindowSession, string>();
+        internal Func<IReadOnlyList<WindowIdentity>> ExplorerDiscovery { get; set; } = NativeWindowApi.DiscoverExplorers;
         private readonly Dictionary<WindowSession, WorkspaceTab> pendingClosed = new Dictionary<WindowSession, WorkspaceTab>();
         private readonly Dictionary<WindowSession, CancellationTokenSource> closeReading = new Dictionary<WindowSession, CancellationTokenSource>();
         private readonly Stack<WorkspaceTab> closedTabs = new Stack<WorkspaceTab>();
@@ -46,7 +47,7 @@ namespace ExplorerTabs.App
                 var close = menu.Items.Add("关闭当前 Explorer", null, (_, __) => { if (active != null) QueueUi(() => CloseTabAsync(active)); }); close.Enabled = controller.Active != null && workspaceOperation == null;
                 menu.Items.Add("分离当前（不关闭）", null, (_, __) => { if (active != null) QueueMenuAction(() => Detach(active)); });
                 menu.Items.Add("分离全部（不关闭）", null, (_, __) => QueueMenuAction(() => DetachAll(false))); menu.Items.Add(new ToolStripSeparator());
-                menu.Items.Add("恢复窗口并退出宿主", null, (_, __) => QueueUi(() => { Close(); return Task.CompletedTask; })); ShowManagedMenu(menu, windows);
+                menu.Items.Add("恢复窗口并退出宿主", null, (_, __) => QueueMenuAction(CloseRestoringWindows)); ShowManagedMenu(menu, windows);
             };
             toolbar.Paint += PaintToolbarDivider;
             toolbarRight.Paint += PaintToolbarDivider;
@@ -54,9 +55,9 @@ namespace ExplorerTabs.App
             toolbar.Controls.Clear();
             toolbarRight.Controls.Clear();
             toolbar.Controls.AddRange(new Control[] { addWindows, windows, new ToolbarDivider(), favorites, session, cancelCreation });
-            // Search and settings open dialogs instead of menus; keep them visually separate on the right.
-            toolbarRight.Controls.AddRange(new Control[] { search, preferences });
-            newTab.Tag = HostCommand.NewTab; search.Tag = HostCommand.SearchTabs; preferences.Tag = HostCommand.Settings;
+            // Search opens a dialog; keep it visually separate on the right.
+            toolbarRight.Controls.AddRange(new Control[] { search });
+            newTab.Tag = HostCommand.NewTab; search.Tag = HostCommand.SearchTabs;
             foreach (IconButton button in CommandButtons()) button.BackColor = HostTheme.Canvas;
             tabs.SetTrailingControl(newTab);
             UpdateToolbarHints();
@@ -92,16 +93,53 @@ namespace ExplorerTabs.App
         private static void ShowShortcut(ToolStripItem item, string chord)
         { if (!string.IsNullOrEmpty(chord) && item is ToolStripMenuItem menuItem) menuItem.ShortcutKeyDisplayString = chord; }
         private void ShowSessionOffer() => sessionOffer.Visible = settings.RememberSession && library.LastSession != null && controller.Sessions.Count == 0;
+        private void ShowAddWindowsMenu()
+        {
+            if (closing || exitPreparing || workspaceOperation != null || creation != null || explorerTabs.IsBusy) return;
+            ShowManagedMenu(CreateAddWindowsMenu(), addWindows);
+        }
+        private ContextMenuStrip CreateAddWindowsMenu()
+        {
+            var menu = new ContextMenuStrip();
+            IReadOnlyList<WindowIdentity> discovered;
+            try { discovered = ExplorerDiscovery() ?? Array.Empty<WindowIdentity>(); }
+            catch (Exception error) { log.Write("Attach menu discovery failed", error); discovered = Array.Empty<WindowIdentity>(); }
+            var attached = new HashSet<long>(controller.Sessions.Select(s => s.Identity.Handle));
+            var candidates = discovered.Where(w => !attached.Contains(w.Handle))
+                .GroupBy(w => w.Handle).Select(group => group.First()).ToArray();
+            foreach (var identity in candidates)
+            {
+                var title = string.IsNullOrWhiteSpace(identity.Title) ? "（无标题 Explorer 窗口）" : identity.Title.Replace("&", "&&");
+                var item = new ToolStripMenuItem(title)
+                {
+                    ToolTipText = "PID " + identity.ProcessId + " · HWND 0x" + identity.Handle.ToString("X")
+                };
+                item.Click += (_, __) => QueueMenuAction(() => AttachSelectedWindows(new[] { identity }));
+                menu.Items.Add(item);
+            }
+            if (candidates.Length == 0) menu.Items.Add(new ToolStripMenuItem("暂无可加入的 Explorer 窗口") { Enabled = false });
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("选择要加入的 Explorer 窗口…", null, (_, __) => QueueMenuAction(OpenWindowPicker));
+            menu.ShowItemToolTips = true;
+            return menu;
+        }
         private void ShowManagedMenu(ContextMenuStrip menu, Control anchor)
         {
-            if (IsDisposed || Disposing || disposingUi || closing || exitPreparing || !IsHandleCreated || anchor.IsDisposed)
+            if (anchor.IsDisposed) { menu.Dispose(); return; }
+            ShowManagedMenuCore(menu, anchor.Text, () => menu.Show(anchor, new Point(0, anchor.Height)));
+        }
+        private void ShowManagedMenuAtScreenPoint(ContextMenuStrip menu, Point screenLocation) =>
+            ShowManagedMenuCore(menu, "应用菜单", () => menu.Show(screenLocation));
+        private void ShowManagedMenuCore(ContextMenuStrip menu, string name, Action show)
+        {
+            if (IsDisposed || Disposing || disposingUi || closing || exitPreparing || !IsHandleCreated)
             { menu.Dispose(); return; }
             HostTheme.StyleMenu(menu);
-            menu.Name = anchor.Text;
+            menu.Name = name;
             RegisterManagedMenu(menu);
             try
             {
-                menu.Show(anchor, new Point(0, anchor.Height));
+                show();
                 // A cancelled Opening does not raise Closed; it must also release ownership/scope.
                 if (!menu.Visible) QueueManagedMenuCleanup(menu);
             }
