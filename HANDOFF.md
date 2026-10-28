@@ -1,8 +1,8 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-10-28；无进行中开发任务；本轮 DPI / 取消按钮修复已实现并通过 860 项安全检查，版本号 0.8.1，待打包上传；待用户真机复验。
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 / 0.8.0 Release 均已上传；0.8.1 待上传。
-最后验证：2026-10-28 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，860 项（核心 455、原生 63、跨进程 17、标签 UI 38、创建 UI 39、工作空间 / 窗框 UI 248）；新增 DPI 白名单反射测试、Unaware helper 跨进程嵌入 / 拒绝分支、自动保存静默与取消按钮延迟显示测试；`bash check-docs.sh` 通过（ARCHITECTURE 172 行、HANDOFF ≤150 行）。0.8.0 release / debug 包保持已上传状态。
+状态日期：2026-10-28；无进行中开发任务；本轮 DPI / 取消按钮修复已实现并通过 860 项安全检查，版本号 0.8.1，已打包并上传 GitHub Release（v0.8.1）；待用户真机复验。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 / 0.8.0 / 0.8.1 Release 均已上传。
+最后验证：2026-10-28 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，860 项（核心 455、原生 63、跨进程 17、标签 UI 38、创建 UI 39、工作空间 / 窗框 UI 248）；新增 DPI 白名单反射测试、Unaware helper 跨进程嵌入 / 拒绝分支、自动保存静默与取消按钮延迟显示测试；`bash check-docs.sh` 通过（ARCHITECTURE 172 行、HANDOFF ≤150 行）。0.8.1 release / debug 包已由 `package.bat` 产出并上传：`dist/release/ExplorerTabs_0.8.1_x64-unpack.zip`、`dist/dev/ExplorerTabs_0.8.1_x64-unpack-debug.zip`、`dist/release/SHA256SUMS.txt`；`dist/release/unpack` 已刷新为 0.8.1。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
 - 2026-10-28 修复待复验：重启系统后打开新标签，预期不再弹「DPI awareness 不一致」；host.log 应出现 `attach.dpi-mismatch ... hostContext=PerMonitorV2(96) targetContext=Unaware(96) allowed=True`。空闲 ≥20 秒确认工具栏不再周期性闪 X；快速新建不闪，长操作约 0.5 秒后才出现取消按钮。125% / 150% 下 rundll32 Unaware 仍会拒绝并提示顶层分组模式（有意保留的安全边界），请确认窗口保持独立、可分离。
