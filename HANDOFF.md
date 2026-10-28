@@ -1,8 +1,8 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-10-28；无进行中开发任务；0.9.0 已打包（release / debug zip + SHA256SUMS），GitHub Release v0.9.0 待上传；本轮窗口缩放 / 顶部 3px 带 / 失焦边框 / 最大化 / 欢迎页 / 标签栏双击 / dev.bat / 打包确认已完成，849 项安全检查通过；窗口尺寸记忆已有回归测试；待用户真机复验。
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 / 0.8.0 / 0.8.1 Release 均已上传（0.9.0 待上传）。
-最后验证：2026-10-28 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，849 项（核心 455、原生 63、跨进程 17、标签 UI 38、创建 UI 39、工作空间 / 窗框 UI 237）；新增 3px 顶部带 / 标签栏顶部转发 / 最大化外扩 / 最小跟踪尺寸 / 欢迎页随缩放重排 / 保存 Bounds 启动恢复等隐藏 UI 断言；`bash check-docs.sh` 通过（ARCHITECTURE 174 行、HANDOFF ≤150 行）。0.9.0 包：`dist/dev/ExplorerTabs_0.9.0_x64-unpack-debug.zip`、`dist/release/ExplorerTabs_0.9.0_x64-unpack.zip`、`dist/release/SHA256SUMS.txt`；`dist/release/unpack` 已刷新为 0.9.0。
+状态日期：2026-10-28；无进行中开发任务；0.9.0 已发布：GitHub Release v0.9.0 已上传（release zip + debug zip + SHA256SUMS）；本轮窗口缩放 / 顶部 3px 带 / 失焦边框 / 最大化 / 欢迎页 / 标签栏双击 / dev.bat / 打包确认已完成，849 项安全检查通过；窗口尺寸记忆已有回归测试；待用户真机复验。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 / 0.8.0 / 0.8.1 / 0.9.0 Release 均已上传。
+最后验证：2026-10-28 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，849 项（核心 455、原生 63、跨进程 17、标签 UI 38、创建 UI 39、工作空间 / 窗框 UI 237）；新增 3px 顶部带 / 标签栏顶部转发 / 最大化外扩 / 最小跟踪尺寸 / 欢迎页随缩放重排 / 保存 Bounds 启动恢复等隐藏 UI 断言；`bash check-docs.sh` 通过（ARCHITECTURE 174 行、HANDOFF ≤150 行）。0.9.0 包：`dist/dev/ExplorerTabs_0.9.0_x64-unpack-debug.zip`、`dist/release/ExplorerTabs_0.9.0_x64-unpack.zip`、`dist/release/SHA256SUMS.txt`，已上传 GitHub Release v0.9.0；`dist/release/unpack` 已刷新为 0.9.0。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
 - 2026-10-28 窗口 / 标签栏体验待复验：退出旧宿主后运行 `dev.bat`（构建并启动 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`）。顶部视觉空白已缩至 3px，标签栏 / 标签顶部 4px 仍可缩放（顶部总命中约 7px），侧边 / 底部 / 四角不变；标签栏空白双击切换最大化 / 还原；无标签时调整窗口大小，欢迎页图标 / 标题 / 按钮应重新居中。请分别确认观感、顶部缩放手感与双击行为。检查时启动的探针实例已正常关闭，探针改动的 settings 窗口状态已恢复为 Bounds (0,0,800,607)、Maximized=false。
