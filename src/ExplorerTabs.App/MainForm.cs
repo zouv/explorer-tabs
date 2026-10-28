@@ -54,7 +54,9 @@ namespace ExplorerTabs.App
             Font = new Font("Microsoft YaHei UI", 9F);
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(1100, 800);
-            MinimumSize = new Size(720, 500);
+            // The native frame is now part of the window rect; keep the old usable content width
+            // at the smallest window (720 x 500 client plus the frame).
+            MinimumSize = new Size(736, 516);
             // Left group: actions that open menus. Right group: commands that open dialogs.
             var toolbarHost = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = HostTheme.Canvas };
             var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, Height = 36, AutoSize = false, Padding = new Padding(8, 2, 8, 2), WrapContents = false };
@@ -73,7 +75,7 @@ namespace ExplorerTabs.App
             cancelCreation.Click += (_, __) => { creation?.Cancel(); workspaceOperation?.Cancel(); foreach (var close in closeReading.Values.ToArray()) close.Cancel(); };
             cancelRevealTimer.Tick += (_, __) => CancelRevealTick();
 
-            tabs.Padding = new Padding(2, 2, 2, 0);
+            tabs.Padding = new Padding(2, 0, 2, 0);
             tabs.Selected += SelectTab;
             tabs.MiddleClose += session => QueueUi(() => CloseTabAsync(session));
             tabs.MoveRequested += MoveTab;
@@ -93,6 +95,7 @@ namespace ExplorerTabs.App
             LocationChanged += (_, __) => LayoutCurrent();
             Resize += (_, __) =>
             {
+                SyncTopResizeBand();
                 SyncShortcutScope(); // Disable immediately when minimised, not at the next monitor tick.
                 if (closing || modalDepth > 0) return;
                 RunSafely("同步窗口大小失败", () =>
@@ -109,6 +112,7 @@ namespace ExplorerTabs.App
             FormClosing += OnClosingWithSession;
             Shown += (_, __) =>
             {
+                SyncTopResizeBand();
                 using (var process = Process.GetCurrentProcess())
                     log.Write($"Host started; version={typeof(MainForm).Assembly.GetName().Version}; PID={process.Id}; OS={Environment.OSVersion}; x64={Environment.Is64BitProcess}; executable={process.MainModule?.FileName}; DPI={NativeWindowApi.DescribeDpi(content.Handle)}");
                 try

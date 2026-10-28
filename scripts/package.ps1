@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
@@ -24,17 +24,42 @@ $devZip = Join-Path $devDir "ExplorerTabs_${version}_x64-unpack-debug.zip"
 $relUnpack = Join-Path $releaseDir 'unpack'
 $relZip = Join-Path $releaseDir "ExplorerTabs_${version}_x64-unpack.zip"
 
-# Never terminate a host. A packaged instance may have attached real Explorer
-# windows, so refuse to overwrite a release that is currently running.
-foreach ($process in @(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue)) {
-    $processPath = $null
-    try { $processPath = $process.Path } catch { }
-    if ([string]::IsNullOrEmpty($processPath)) {
-        throw "Cannot verify the path of running ExplorerTabs (PID $($process.Id)). Exit it before packaging."
+# A running host may hold files under dist and may have attached Explorer windows.
+# Never close one silently: ask first, and only continue after an explicit Y.
+$running = @(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue)
+if ($running.Count -gt 0) {
+    Write-Host ""
+    Write-Host "[WARN] 检测到 ExplorerTabs 正在运行：" -ForegroundColor Yellow
+    foreach ($process in $running) {
+        $processPath = $null
+        try { $processPath = $process.Path } catch { }
+        if ([string]::IsNullOrEmpty($processPath)) { $processPath = '(无法读取路径)' }
+        Write-Host ("       PID {0}  {1}" -f $process.Id, $processPath)
     }
-    if ($processPath.StartsWith($distDir + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "A packaged ExplorerTabs is running from $processPath. Exit it before packaging; this script never terminates hosts."
+    Write-Host "       关闭宿主后，已嵌入的标签窗口可能一并关闭且无法恢复。"
+    if ([Console]::IsInputRedirected) {
+        throw "ExplorerTabs is still running. Exit it before packaging (non-interactive input, cannot confirm closing it)."
     }
+    $answer = Read-Host "是否强制关闭并继续打包？输入 Y 确认，其它任意输入取消"
+    if ($answer -notmatch '^\s*[Yy]([Ee][Ss])?\s*$') {
+        Write-Host "[INFO] 已取消打包，请先手动退出 ExplorerTabs。" -ForegroundColor Yellow
+        exit 1
+    }
+    foreach ($process in $running) {
+        try { $null = $process.CloseMainWindow() } catch { }
+    }
+    # Give the normal close (session windows / settings) a bounded chance first.
+    $deadline = (Get-Date).AddSeconds(12)
+    while ((Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 250
+    }
+    foreach ($process in @(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue)) {
+        try { $process.Kill(); $process.WaitForExit(5000) } catch { }
+    }
+    if (@(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue).Count -gt 0) {
+        throw "无法关闭运行中的 ExplorerTabs（可能需要管理员权限）。请手动退出后重试。"
+    }
+    Write-Host "[INFO] 已关闭运行中的 ExplorerTabs，继续打包。" -ForegroundColor Green
 }
 
 if (Test-Path -LiteralPath (Join-Path $root 'LICENSE')) {

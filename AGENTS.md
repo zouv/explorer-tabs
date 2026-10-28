@@ -78,7 +78,7 @@
 
 
 - 技术栈：C# / WinForms / .NET Framework 4.8 / x64，无第三方 NuGet。
-- 构建/运行：手动运行 dist/release/unpack/ExplorerTabs.exe（由 package.bat 产出）；打包：package.bat / sh manager.sh package；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
+- 构建/运行：手动运行 dist/release/unpack/ExplorerTabs.exe（由 package.bat 产出）；开发期可用 dev.bat（构建后启动 `.runtime/build/ExplorerTabs-dev` 快照，检测到运行中宿主即拒绝）；打包：package.bat / sh manager.sh package；测试/校验：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke；lint：构建 TreatWarningsAsErrors=true；bash check-docs.sh。
 - 代码风格：匹配现有风格（命名、目录约定、注释语言），改动小而聚焦。
 -
 
@@ -90,7 +90,7 @@
 
 -
 -
-- 不得自动启动交互宿主、接管或关闭用户已有 Explorer。自动测试限自建窗口和 fake Shell。不得覆盖运行中的发布包；恢复日志先持久化再接管；窗口身份必须精确匹配，禁止按标题或最新窗口猜测。
+- 不得自动启动交互宿主、接管或关闭用户已有 Explorer。自动测试限自建窗口和 fake Shell。不得覆盖运行中的发布包；恢复日志先持久化再接管；窗口身份必须精确匹配，禁止按标题或最新窗口猜测。唯一例外：`package.bat` 检测到运行中宿主时先列出进程并询问，只有用户输入 `Y` 才关闭宿主（先尝试正常关闭，超时再强制），默认取消。
 
 ---
 
@@ -165,4 +165,4 @@
 - 用户反馈直接在对话询问，不新增人工回归清单。不得修改用户填写的 docs/manual-test.md 和 docs/v0.2-test.md。
 - 每个标签保留一个真实 Explorer，切换显隐；不改成单视图目录导航，不复制 QTTabBar GPL 代码。
 - docs 中已有源码/历史发布路径保留为历史；当前源码根为 D:/Git/zgithub/explorer-tabs。旧目录是只读备份，不再开发。
-- 不自动提交、推送、终止旧宿主；真实 Shell 创建需人工验证，fake 测试不能宣称真机通过。
+- 不自动提交、推送、终止旧宿主；真实 Shell 创建需人工验证，fake 测试不能宣称真机通过。唯一例外：`package.bat` 在用户输入 `Y` 确认后关闭运行中的宿主。

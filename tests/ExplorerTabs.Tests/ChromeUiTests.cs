@@ -28,15 +28,60 @@ namespace ExplorerTabs.Tests
                     long style = ChromeStyle(form.Handle, -16).ToInt64();
                     Check((style & 0x00C00000) == 0 && (style & 0x000F0000) == 0x000F0000, "own host HWND has no caption but retains resizing/system/min/max styles");
                     Check(form.FormBorderStyle == FormBorderStyle.None, "main form removes the independent standard title bar");
+                    Check(form.Padding.Left == 0 && form.Padding.Right == 0 && form.Padding.Bottom == 0 && form.Padding.Top > 0,
+                        "only the top resize band is reserved inside the client");
+                    Check(form.Padding.Top == (int)UiCall(form, "ChromePixels", 3)! && form.BackColor == chrome.BackColor,
+                        "top visual band is 3 logical px and uses the tab-strip colour");
+                    var stripTop = form.PointToScreen(new Point(100, form.Padding.Top + 1));
+                    long stripPacked = ((stripTop.Y & 0xffff) << 16) | (stripTop.X & 0xffff);
+                    Check(ChromeSend(strip.Handle, 0x0084, IntPtr.Zero, new IntPtr(stripPacked)) == new IntPtr(12),
+                        "tab strip forwards its top edge as HTTOP to keep the resize zone wide");
+                    var welcome = content.Controls.Cast<Control>().Single(c => c.GetType().Name == "WelcomePanel");
+                    var welcomeButtons = welcome.Controls.OfType<Button>().ToArray();
+                    form.Height = 900; form.PerformLayout(); welcome.PerformLayout();
+                    int welcomeTop = welcomeButtons[0].Top;
+                    form.Height = 700; form.PerformLayout(); welcome.PerformLayout();
+                    Check(welcomeButtons[0].Top < welcomeTop, "welcome actions follow window resizing");
+                    form.Height = 800; form.PerformLayout();
+                    var windowRect = NativeWindowApi.ReadRect(form.Handle).ToRectangle();
+                    IntPtr minMax = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TestMinMaxInfo)));
+                    try
+                    {
+                        Marshal.StructureToPtr(new TestMinMaxInfo(), minMax, false);
+                        ChromeSend(form.Handle, 0x0024, IntPtr.Zero, minMax);
+                        var info = (TestMinMaxInfo)Marshal.PtrToStructure(minMax, typeof(TestMinMaxInfo))!;
+                        var work = Screen.FromHandle(form.Handle).WorkingArea;
+                        var monitor = Screen.FromHandle(form.Handle).Bounds;
+                        int side = (form.Width - form.ClientSize.Width) / 2;
+                        int bottom = form.Height - form.ClientSize.Height;
+                        Check(info.MaxSize.X == work.Width + side * 2 && info.MaxSize.Y == work.Height + side + bottom &&
+                            info.MaxPosition.X == work.Left - monitor.Left - side && info.MaxPosition.Y == work.Top - monitor.Top - side,
+                            "maximized window overhangs the work area by the native frame instead of covering the taskbar");
+                        Check(info.MinTrackSize.X == form.MinimumSize.Width && info.MinTrackSize.Y == form.MinimumSize.Height,
+                            "min track size still follows the managed minimum");
+                    }
+                    finally { Marshal.FreeHGlobal(minMax); }
+                    Check(ChromeGetClientRect(form.Handle, out var frameClient) &&
+                        windowRect.Width > frameClient.ToRectangle().Width && windowRect.Height > frameClient.ToRectangle().Height,
+                        "native sizing frame stays outside the client area so children cannot cover it");
+                    long leftPacked = (((windowRect.Top + windowRect.Height / 2) & 0xffff) << 16) | ((windowRect.Left + 1) & 0xffff);
+                    Check(ChromeSend(form.Handle, 0x0084, IntPtr.Zero, new IntPtr(leftPacked)) == new IntPtr(10),
+                        "native left resize border answers WM_NCHITTEST");
+                    long topPacked = (((windowRect.Top + 1) & 0xffff) << 16) | ((windowRect.Left + windowRect.Width / 2) & 0xffff);
+                    Check(ChromeSend(form.Handle, 0x0084, IntPtr.Zero, new IntPtr(topPacked)) == new IntPtr(12),
+                        "native top resize border answers WM_NCHITTEST");
+                    var insideScreen = form.PointToScreen(new Point(100, 100));
+                    long insidePacked = ((insideScreen.Y & 0xffff) << 16) | (insideScreen.X & 0xffff);
+                    Check(ChromeSend(form.Handle, 0x0084, IntPtr.Zero, new IntPtr(insidePacked)) == new IntPtr(1),
+                        "client area answers WM_NCHITTEST as HTCLIENT");
                     for (int cycle = 0; cycle < 4; cycle++)
                     {
-                        Check(ChromeSend(form.Handle, 0x0085, new IntPtr(1), IntPtr.Zero) == IntPtr.Zero, "default nonclient frame repaint is suppressed " + cycle);
-                        Check(ChromeSend(form.Handle, 0x0086, IntPtr.Zero, IntPtr.Zero) != IntPtr.Zero, "nonclient deactivation retains default state transition " + cycle);
+                        Check(ChromeSend(form.Handle, 0x0086, IntPtr.Zero, IntPtr.Zero) != IntPtr.Zero, "nonclient deactivation keeps the native frame state " + cycle);
                         ChromeSend(form.Handle, 0x0086, new IntPtr(1), IntPtr.Zero);
-                        Check(ChromeGetClientRect(form.Handle, out var client) && NativeWindowApi.ReadRect(form.Handle).ToRectangle().Size == client.ToRectangle().Size,
-                            "activation cycles keep client area extended through native frame " + cycle);
+                        Check(ChromeGetClientRect(form.Handle, out var client) && client.ToRectangle().Size == frameClient.ToRectangle().Size,
+                            "activation cycles keep the native client inset stable " + cycle);
                     }
-                    Check((ChromeStyle(form.Handle, -16).ToInt64() & 0x000F0000) == 0x000F0000, "activation painting suppression preserves resize/system styles");
+                    Check((ChromeStyle(form.Handle, -16).ToInt64() & 0x000F0000) == 0x000F0000, "activation cycles preserve resize/system styles");
                     var brandArea = chrome.Controls.OfType<Panel>().Single(p => !(p is FlowLayoutPanel) && p != strip);
                     var captions = chrome.Controls.OfType<FlowLayoutPanel>().Single(p => p != strip);
                     var capButtons = captions.Controls.OfType<Button>().ToArray();
@@ -45,7 +90,7 @@ namespace ExplorerTabs.Tests
                     foreach (int width in new[] { 720, 1100, 1600 })
                     {
                         form.Width = width; form.PerformLayout(); strip.PerformLayout();
-                        Check(chrome.Top == 1 && toolbarHost.Top == chrome.Bottom && content.Top == toolbarHost.Bottom, "browser chrome and toolbar dock before content at width " + width);
+                        Check(chrome.Top == form.Padding.Top && toolbarHost.Top == chrome.Bottom && content.Top == toolbarHost.Bottom, "browser chrome and toolbar dock after the top resize band at width " + width);
                         using (var image = new Bitmap(toolbar.Width, toolbar.Height))
                         {
                             toolbar.DrawToBitmap(image, toolbar.ClientRectangle);
@@ -134,14 +179,7 @@ namespace ExplorerTabs.Tests
                     Check(logo.Image != null, "about dialog shows the embedded application icon");
                 }
                 AdaptiveTabWidthsSmoke(dir);
-                var hit = MainType.GetMethod("ChromeHitTest", BindingFlags.Static | BindingFlags.NonPublic)!;
-                var points = new[] { new Point(1, 1), new Point(799, 1), new Point(1, 599), new Point(799, 599), new Point(1, 100), new Point(799, 100), new Point(100, 1), new Point(100, 599), new Point(100, 100) };
-                int[] expected = { 13, 14, 16, 17, 10, 11, 12, 15, 1 };
-                for (int i = 0; i < points.Length; i++)
-                {
-                    Check((int)hit.Invoke(null, new object[] { points[i], new Size(800, 600), 6, false })! == expected[i], "native resize hit region " + expected[i]);
-                    Check((int)hit.Invoke(null, new object[] { points[i], new Size(800, 600), 6, true })! == 1, "maximized host does not advertise resize edges " + i);
-                }
+                BoundsRestoreSmoke(dir);
             }
             finally { Directory.Delete(dir, true); }
         }
@@ -184,6 +222,16 @@ namespace ExplorerTabs.Tests
                 Check(!api.Events.Any(e => e.StartsWith("restore")), "adaptive measurements and wrap never restore/reparent Explorer");
             }
         }
+        private static void BoundsRestoreSmoke(string directory)
+        {
+            var api = new FakeWindows(); var host = new HostController(api, new FakeStore());
+            var settings = new AppSettings { Bounds = new NativeRect { Left = 120, Top = 90, Right = 920, Bottom = 690 } };
+            using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore(), settings))
+                Check(form.Bounds == new Rectangle(120, 90, 800, 600),
+                    "saved window bounds initialise the next launch size");
+        }
+        [StructLayout(LayoutKind.Sequential)] private struct TestPoint { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)] private struct TestMinMaxInfo { public TestPoint Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize; }
         [DllImport("user32.dll", EntryPoint = "SendMessageW")] private static extern IntPtr ChromeSend(IntPtr hwnd, int message, IntPtr wparam, IntPtr lparam);
         [DllImport("user32.dll", EntryPoint = "GetClientRect")] private static extern bool ChromeGetClientRect(IntPtr hwnd, out NativeRect rect);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr ChromeStyle(IntPtr hwnd, int index);

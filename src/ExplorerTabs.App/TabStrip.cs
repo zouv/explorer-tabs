@@ -46,6 +46,23 @@ namespace ExplorerTabs.App
             DoubleBuffered = true;
             scroll.Tick += (_, __) => AutoScrollDrag();
         }
+        // The host reserves only a 3 px top band for visuals; the first 4 px of the strip
+        // (and its tabs) still answer HTTOP so the usable top resize zone stays ~7 px.
+        private bool TryTopResize(ref Message m, Control control)
+        {
+            if (m.Msg != 0x0084) return false;
+            var form = FindForm();
+            if (form == null || form.WindowState == FormWindowState.Maximized) return false;
+            long value = m.LParam.ToInt64();
+            var screen = new Point((short)(value & 0xffff), (short)((value >> 16) & 0xffff));
+            if (control.PointToClient(screen).Y >= Pixels(4)) return false;
+            m.Result = new IntPtr(12); return true;
+        }
+        protected override void WndProc(ref Message m)
+        {
+            if (TryTopResize(ref m, this)) return;
+            base.WndProc(ref m);
+        }
 
         public void Render(IReadOnlyList<WindowSession> sessions, WindowSession? active,
             Func<WindowSession, ContextMenuStrip> createMenu,
@@ -396,6 +413,7 @@ namespace ExplorerTabs.App
             }
             protected override void WndProc(ref Message message)
             {
+                if (strip.TryTopResize(ref message, this)) return;
                 // Some button styles/native paths release capture before managed MouseUp. Preserve
                 // the gesture through that release; genuine external capture loss still cancels it.
                 bool mouseUp = message.Msg == 0x202; // WM_LBUTTONUP

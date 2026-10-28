@@ -150,6 +150,7 @@ namespace ExplorerTabs.App
         public WelcomePanel(Action newTab, Action addWindow)
         {
             Dock = DockStyle.Fill; BackColor = HostTheme.Canvas; DoubleBuffered = true;
+            SetStyle(ControlStyles.ResizeRedraw, true);
             Controls.Add(create); Controls.Add(join); create.Click += (_, __) => newTab(); join.Click += (_, __) => addWindow();
             AccessibleName = "Explorer 工作空间";
         }

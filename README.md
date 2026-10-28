@@ -140,13 +140,14 @@ Windows 批处理入口（`build` / `test` / `package` / `run` 与 `manager.sh` 
 build.bat    :: 构建 + 基础检查
 test.bat     :: 完整安全自动检查
 verify.bat   :: 警告即错误构建 + 完整安全检查 + 文档体检
-package.bat  :: 打包
+package.bat  :: 打包（检测到运行中宿主时先询问，输入 Y 才关闭）
 run.bat      :: 手动启动 dist\release\unpack（run.bat dev 启动开发快照）
+dev.bat      :: 构建后直接启动开发快照（运行中的宿主会使其拒绝启动）
 clean.bat    :: 清理 bin / obj / .runtime（保留 dist 与 artifacts）
 ci.bat       :: clean -> verify -> package
 ```
 
-`clean.bat` 不会结束运行中的宿主；`run.bat` 仅用于你手动启动真实交互宿主。
+`clean.bat` / `dev.bat` 不会结束运行中的宿主；`run.bat` 仅用于你手动启动真实交互宿主。
 
 ## 打包
 
@@ -162,7 +163,7 @@ package.bat
 | `dist\release\unpack\` | Release 免安装可运行目录（不含 PDB，含 README 与截图资源） |
 | `dist\release\ExplorerTabs_<版本>_x64-unpack.zip` | 从 `unpack` 内部打包，解压后 exe 直接在 zip 根下 |
 
-打包只清理 `dist\dev`、`dist\release` 与 `.runtime\staging`，不触碰历史 `dist\vX-release`；不生成 `setup.exe`；不会终止运行中的 ExplorerTabs 或用户 Explorer。
+打包只清理 `dist\dev`、`dist\release` 与 `.runtime\staging`，不触碰历史 `dist\vX-release`；不生成 `setup.exe`；若检测到运行中的 ExplorerTabs，会先列出进程并询问，只有输入 `Y` 才关闭宿主（先尝试正常关闭，12 秒后仍未退出则强制结束）并继续，其它输入取消；不会自动终止宿主，也不会关闭用户 Explorer。
 
 ## 项目结构
 

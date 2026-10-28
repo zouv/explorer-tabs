@@ -16,8 +16,9 @@ rem  说明:
 rem    - 版本号单一来源: Directory.Build.props 的 <Version>。
 rem    - 不生成 setup.exe: 本项目约束为无第三方 NuGet，release 以免安装
 rem      解压包分发；不引入 Inno Setup / IExpress。
-rem    - 不终止任何运行中的 ExplorerTabs，也不关闭用户 Explorer。若打包
-rem      目标正在运行，脚本会报错并要求先手动退出。
+rem    - 检测到运行中的 ExplorerTabs 时会先列出进程并询问：输入 Y 才关闭
+rem      宿主（先尝试正常关闭，超时再强制结束）并继续打包；其它输入取消。
+rem      不会自动关闭任何宿主，也不会关闭用户 Explorer。
 rem ============================================================
 
 pushd "%~dp0"

@@ -18,7 +18,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 多行 / 排序 / 设置 | TabStrip.cs、SettingsDialog.cs、AppSettings.cs、WorkspaceUiTests.cs | ShellExplorerBackend |
 | 分离黑块 / 任务栏 / 事故恢复 | HostController.cs、NativeWindowApi.cs、RestorePresentation.cs、RecoveryJournal.cs | 收藏库、快捷键设置 UI |
 | 产品 / 工程改名 / 旧版兼容 | ProductIdentity.cs、Program.cs、BrandingTests.cs、工程文件、scripts/build.ps1 | Shell ABI、原生恢复执行 |
-| 发布 / 自动验证 / 打包 | scripts/build.ps1、scripts/package.ps1、build.bat / test.bat / verify.bat / clean.bat / run.bat / ci.bat、package.bat、manager.sh、Directory.Build.props、tests/ExplorerTabs.Tests | 用户历史反馈、界面实现细节 |
+| 发布 / 自动验证 / 打包 | scripts/build.ps1、scripts/package.ps1、build.bat / test.bat / verify.bat / clean.bat / run.bat / dev.bat / ci.bat、package.bat、manager.sh、Directory.Build.props、tests/ExplorerTabs.Tests | 用户历史反馈、界面实现细节 |
 
 ## 1. 文件职责
 | 文件 | 职责 |
@@ -26,8 +26,8 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | src/ExplorerTabs.Core/ProductIdentity.cs | 产品名 ExplorerTabs；集中旧数据目录与跨版本单实例身份，不执行迁移 |
 | tests/ExplorerTabs.Tests/BrandingTests.cs、Fixtures/v0.6.1/ | 旧程序集生成的合成 JSON，字节级重序列化、改名元数据 / 资源与独立测试用户互斥 |
 | src/ExplorerTabs.App/Program.cs | 单实例 / DPI / 事故恢复，独立读取 settings.json 与 workspace.json；坏库禁用持久化 |
-| src/ExplorerTabs.App/MainForm.Chrome.cs | 无独立标题栏、系统样式 / 最大化工作区 / resize hit-test / 非客户区绘制抑制、标签空白拖动、窗口按钮、托管应用菜单与图标资源 |
-| src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色、DialogStyle / DialogTitleBar 无边框弹窗、1px 圆角边框与小圆角；不依赖 SVG 运行库 |
+| src/ExplorerTabs.App/MainForm.Chrome.cs | 无独立标题栏、原生 thick frame（薄 DWM 边框 + 不可见缩放边距）、顶部边框并入客户区并用同色带上报缩放 / 最大化工作区、标签空白拖动、窗口按钮、托管应用菜单与图标资源 |
+| src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色、DialogStyle / DialogTitleBar 无边框弹窗、1px 圆角边框与小圆角、欢迎页 ResizeRedraw；不依赖 SVG 运行库 |
 | src/ExplorerTabs.App/AboutDialog.cs | 应用介绍：嵌入图标、程序集版本、简短说明与关闭按钮；沿用 ShellDialog 边框 / 圆角 |
 | src/ExplorerTabs.App/MainForm.cs | 接管、激活、分离、创建、轮询、模态范围与 UI 状态同步 |
 | src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏左右分组、加入窗口候选菜单、分离菜单、临时菜单所有权 / 延后释放、启动恢复横条、收藏与组 CRUD、收藏管理弹窗入口、QueueUi |
@@ -51,7 +51,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | assets/icons/、assets/screenshots/ | 三版原创 SVG、对比预览、暂用 A 的多尺寸 ICO / 嵌入资源；README 引用的离屏单行 / 多行截图（不含真实 Explorer 内容） |
 | tests/ExplorerTabs.Tests/WorkspaceTests.cs、WorkspaceUiTests.cs | 库 / 快捷键 / close / STA 策略；隐藏 UI 会话、迟到结果、多行跨行拖动、设置 / 搜索 |
 | tests/ExplorerTabs.Tests/Program.cs、FeatureTests.cs、CreationUiTests.cs、ShellInteropTests.cs | 基线断言、fake Shell、自建透明窗口、隐藏 UI 与原生 ABI stub |
-| scripts/build.ps1、scripts/package.ps1、build.bat / test.bat / verify.bat / clean.bat / run.bat / ci.bat、package.bat、manager.sh、Directory.Build.props | net48 / x64 / 版本单一来源、受保护开发快照、可选安全 smoke；.bat 仅做参数透传与前置检查；package 产出 dev zip + release unpack/zip，不杀宿主 |
+| scripts/build.ps1、scripts/package.ps1、build.bat / test.bat / verify.bat / clean.bat / run.bat / dev.bat / ci.bat、package.bat、manager.sh、Directory.Build.props | net48 / x64 / 版本单一来源、受保护开发快照、可选安全 smoke；.bat 仅做参数透传与前置检查；dev.bat 构建后启动开发快照；package 产出 dev zip + release unpack/zip，运行中宿主需用户确认后才关闭 |
 | dist/、artifacts/ | Git 忽略的发布与验证产物：`dist/dev` 版本化 debug zip、`dist/release/unpack` + release zip；历史 `dist/vX-release` 原样保留；artifacts/ 存离屏图像与验证日志 |
 | docs/ | 使用 / 历史反馈；不改用户已填清单 |
 | AGENTS.md、CLAUDE.md、ARCHITECTURE.md、ROADMAP.md、CHANGELOG.md、HANDOFF.md | 规则、图谱、计划、发布、进行中接力 |
@@ -61,11 +61,11 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 任务 | 文件 / 函数 | 约束 |
 |---|---|---|
 | 产品 / 旧版身份 | ProductIdentity.GetStateDirectory / GetMutexName、Program.Main、BrandingUnitTests | 继续旧 LocalAppData 目录与 per-user Local mutex；仅测试合成身份，不争用实际宿主 |
-| 灰框 / 空栏 | MainForm.WndProc / InvalidateChrome、NativeWindowApi.MeasureEmbeddedTitleInset / EmbeddedViewportBounds / Layout | WM_NCPAINT 抑制 / NCACTIVATE lParam=-1；仅精确 Explorer 嵌入根窗口裁切，不改 Ribbon / 恢复快照 |
+| 灰框 / 空栏 | MainForm.Chrome.cs 的 CreateParams / WndProc、NativeWindowApi.MeasureEmbeddedTitleInset / EmbeddedViewportBounds / Layout | 保留原生 thick frame 与默认 NC 计算；仅精确 Explorer 嵌入根窗口裁切，不改 Ribbon / 恢复快照 |
 | 新建 / 复制 | MainForm.CreateTabAsync / QueueCreateFromMenu、ExplorerCreationWorkflow.Run / Verify | 15 秒；排除已有与受管 HWND，核验后延迟呈现；结果 using / Dispose，成功 MarkAttached；迟到不接管 |
 | DPI / 嵌入兼容 | NativeWindowApi.ValidateAttach / AllowDpiMismatch / IsDpiContext / MatchThreadDpiToExplorer / PreferredThreadDpiContext、MainForm.SetCreationControls | 宿主保持 PerMonitor/PMv2；仅低 awareness 子窗口 + PerMonitor/PMv2 宿主 + 有效 DPI 相等时允许跨 context SetParent；其余 mismatch / context 不可读仍拒绝并记录 host/target；自动保存不显示取消 |
-| 窗框 / 图标工具栏 | MainForm.InitializeChrome / WndProc / ChromeHitTest、InitializeWorkspaceUi / UpdateToolbarHints、TabStrip.PreferredChromeHeight | 无 WS_CAPTION 但保留系统 / 缩放样式；右上角 X / Alt+F4 关闭所有会话窗口后退出；100% 单行栏各 36 px |
-| 工具栏 / 标签栏布局 | MainForm.InitializeWorkspaceUi、MainForm.PaintToolbarDivider、TabStrip.SetTrailingControl / UpdateRows | 加入窗口与分离窗口相邻在左组；右组只保留搜索（设置移入应用菜单）；新建按钮紧跟最后一个标签且不参与测宽 / 拖动排序 |
+| 窗框 / 图标工具栏 | MainForm.InitializeChrome / CreateParams / WndProc / SyncTopResizeBand、InitializeWorkspaceUi / UpdateToolbarHints、TabStrip.PreferredChromeHeight | 无 WS_CAPTION 但保留原生 thick frame / 缩放样式；左右 / 下边框留在客户区外，顶部边框并入客户区，视觉带仅 3 逻辑 px；TabStrip / TabButton 顶部 4px 转发 HTTOP，使顶部命中区仍约 7px；`WM_NCACTIVATE` 保留原边框状态、`WM_GETMINMAXINFO` 按边框外扩使最大化客户区等于工作区；最大化时顶部带收为 0；最小窗口 736×516 保持旧内容宽度；右上角 X / Alt+F4 关闭所有会话窗口后退出；100% 单行栏各 36 px |
+| 工具栏 / 标签栏布局 | MainForm.InitializeWorkspaceUi、MainForm.PaintToolbarDivider、TabStrip.SetTrailingControl / UpdateRows / TryTopResize、MainForm.ChromeMouseDown | 加入窗口与分离窗口相邻在左组；右组只保留搜索（设置移入应用菜单）；新建按钮紧跟最后一个标签且不参与测宽 / 拖动排序；标签栏空白双击切换最大化 / 还原（MouseDown Clicks=2，不依赖被 HTCAPTION 吞掉的 MouseDoubleClick） |
 | 弹窗样式 / 标题栏 | DialogStyle.Apply / DrawBorder、DialogTitleBar、QuickPickerDialog / SettingsDialog / RenameTabDialog / WindowPicker / AboutDialog / LibraryManagerDialog | 无边框自定义标题栏（标题 / 关闭 / 拖动）替代原生厚边框；1px 圆角边框 + Win10 窗口 region 小圆角；不改系统文件 / 文件夹选择框 |
 | 应用菜单 / 关于 | MainForm.CreateAppMenu / ShowAppMenu / ShowAbout、AboutDialog | 图标 / 标签栏空白右键统一托管菜单；设置、关闭（分离所有窗口）、关闭、关于（单独分组置底）；关闭项展示 Alt+F4 并带“关闭所有会话窗口”Tooltip，分离项带“分离所有会话窗口”Tooltip；不再提供移动 / 大小 / 最大最小化 |
 | 加入已有窗口 | MainForm.ShowAddWindowsMenu / CreateAddWindowsMenu / OpenWindowPicker / AttachSelectedWindows、WindowPicker | 先列出未接管的 DiscoverExplorers 候选，文案为“加入【标题】窗口”并带点击说明 / PID / HWND Tooltip；底部“打开“加入”管理界面”再开 WindowPicker；仍走 IsExplorer 与精确身份校验 |
@@ -81,10 +81,10 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 搜索 / 命令 | MainForm.ShowTabPickerAsync / ShowCommandPicker / ExecuteCommandAsync、QuickPickerDialog.Filter | 列表打开前有界读取当前目录；失败可显示旧缓存标签，不猜路径 |
 | 键盘 | TabKeyboardHook.OnKey / Eligible / UpdateScope、HostShortcutPolicy.Handle | 不消费其他程序、菜单 / 独立对话框、注入 / Win 组合；UI 执行时再验范围 |
 | 多行 / 拖动 / 悬停关闭 | TabStrip.ConfigureLayout / MeasureTabWidth / AssignWrappedRows / UpdateRows / Render / Reveal / UpdateInsertion / TooltipFor、TabButton.HitClose | FlowBreak 按各标题实际宽度换行，最多 2–8 可见行；为 × 固定预留 20 逻辑 px；保留滚动；跨行不重挂窗口 |
-| 设置 | SettingsDialog、MainForm.ShowSettings / ApplySettings、AppSettingsStore | 入口在应用菜单、Ctrl+, 与命令面板；工具栏不再有设置按钮；wrap 默认关闭；22 操作可下拉重绑 / 留空禁用，重复拒绝；保存成功才应用 |
+| 设置 | SettingsDialog、MainForm.ShowSettings / ApplySettings / CurrentSettings / SaveSettingsOnExit、SettingsLayoutPolicy、AppSettingsStore | 入口在应用菜单、Ctrl+, 与命令面板；工具栏不再有设置按钮；wrap 默认关闭；22 操作可下拉重绑 / 留空禁用，重复拒绝；保存成功才应用；正常退出保存窗口 Bounds / Maximized，启动按工作区夹取恢复（小于最小尺寸或越界才回退） |
 | 正常退出 / 关闭 | MainForm.OnClosingWithSession → OnClosing、CloseSessionsForExit / CompleteExit / RequestExitByClosingSessions / CloseRestoringWindows | 预保存普通目录；用户关闭（X / Alt+F4 / 应用菜单关闭）先对所有 Attached 会话发精确 WM_CLOSE，全部消失才退出，10 秒未关闭则取消退出并保留宿主；只有分离菜单的“恢复窗口并退出宿主”走 detach / restore；都不 kill 进程 |
 | 分离 / 事故恢复 | HostController.Detach / DetachAll、Program.RecoverBeforeStartup | 保持隐藏恢复结构，再显示 / 重绘 / 任务栏注册；事故记录优先于目录重开 |
-| 打包 / 出包目录 | scripts/package.ps1 的 Invoke-Build / Copy-AppFiles / Write-BuildInfo / New-Zip、package.bat、manager.sh package | 版本读 Directory.Build.props；只清 dist/dev、dist/release、.runtime/staging；dev zip 有顶层目录、release zip 无；不生成 setup.exe；不 taskkill 宿主 |
+| 打包 / 出包目录 | scripts/package.ps1 的 Invoke-Build / Copy-AppFiles / Write-BuildInfo / New-Zip、package.bat、manager.sh package | 版本读 Directory.Build.props；只清 dist/dev、dist/release、.runtime/staging；dev zip 有顶层目录、release zip 无；不生成 setup.exe；运行中宿主先列出并询问，默认取消，仅输入 Y 时先正常关闭后强制 |
 
 ## 3. 重点链路与易踩坑
 - 0.4.1 Navigate2 使用完整原生 dual vtable、PIDL 的 VT_ARRAY|VT_UI1 与 optional VT_EMPTY。原生 stub 与用户真机基线均验证；不改回晚绑定 Type.Missing。
@@ -107,9 +107,11 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - 真实后端不再主动 Show 独立新窗口；Shell 激活瞬间 / 内部导航是否仍露脸留真机验证，不靠全局 EnumWindows / hook 追捕窗口。
 - using(result) 覆盖单次及会话创建；STA 交付前绑定取消，COM / 后端 Dispose 失败与未交付结果均释放 lease。注册与取消并发幂等，Registration.Dispose 不持有 gate。
 - Attach 的新建隐藏窗快照在日志落盘前设独立可见恢复意图；Activate 成功后 MarkAttached。失败恢复只精确 native identity + 顶层无父 / 非 WS_CHILD，不 Quit / kill / 携 COM 跨 STA。
-- WM_NCPAINT 不交默认绘制，WM_NCACTIVATE 以 lParam=-1 交 DefWindowProc 保留激活状态而不画厚边；只刷新宿主 chrome / toolbar，不强制重绘整个 Explorer。
+- 保留原生 thick frame，但把顶部边框并入客户区：`WM_NCCALCSIZE` 默认计算出客户区后，把 `rgrc[0].Top` 拉回窗口顶边；左右 / 下边框仍是非客户区，DWM 画薄边框、宽 5–8px 的不可见边距负责缩放命中，子控件无法覆盖。顶部视觉带由 `SyncTopResizeBand` 设为 3 逻辑 px 的 `Padding.Top`（`BackColor` 与标签栏同为 `HostTheme.Chrome`），`WM_NCHITTEST` 在该带返回 `HTTOP` / 左右角；`TabStrip` 与其 `TabButton` 再把各自顶部 4px 转发为 `HTTOP`，顶部总命中区仍约 7px。最大化时该带收为 0。`WM_NCACTIVATE` 以 lParam=-1 交 `DefWindowProc` 并返回，避免 Windows 10 失焦时把非激活边框画进顶部带；`WM_GETMINMAXINFO` 按原生边框外扩 `MaxSize` / `MaxPosition`，使最大化客户区正好等于工作区（不遮任务栏、无顶部条）。不要再改回 WM_NCCALCSIZE 返回 0 + 大面积 Padding 模拟边框。
+- 标签栏空白双击最大化 / 还原：`ChromeMouseDown` 在 `e.Clicks == 2` 时直接 `ToggleMaximize`，其余左键才发 `HTCAPTION` 进入移动循环；不要依赖 `MouseDoubleClick`（首次按下已进入移动循环，双击事件不一定送达）。
+- 无标签的欢迎页 `WelcomePanel` 由 content `Dock=Fill` 填充，`ResizeRedraw` 确保窗口缩放后完整重绘；按钮在 `OnLayout` 按 `ClientSize` 重新居中，图标 / 标题 / 按钮随尺寸移动。
 - 嵌入 FrameChanged 先于 Layout；只有精确 Explorer 且 client 与 window 一致，直接全宽 UIRibbonCommandBarDock 含 UIRibbonCommandBar、顶部偏移在 DPI 缩放后的 80px 内，才按实测 inset 把根窗口移到 viewport.Y-inset 并增高 inset；底部保持不变。未知布局返回 0；不改子控件、普通 / 分组窗口或恢复快照。嵌入日志记录 inset / viewport，诊断导出追加宿主区域 / DPI / 滚动状态。
-- WM_NCCALCSIZE 去独立标题框；窗框保留系统菜单 / 边缘缩放 / 工作区最大化。品牌及三个窗口按钮固定第一行，多行只增长标签区域；空白拖动 / 双击最大化。
+- 无独立标题栏：CreateParams 移除 WS_CAPTION、保留 WS_SYSMENU / WS_MINIMIZEBOX / WS_MAXIMIZEBOX / WS_THICKFRAME；品牌及三个窗口按钮固定第一行，多行只增长标签区域；空白拖动 / 双击最大化。
 - 单行标签栏与工具栏各约 36 px（100%）；仅溢出才增加滚动高度；工具栏在自身底部画 1px 低饱和度线，不增加空行。分组图标按钮有 Tooltip / AccessibleName / hover / focus；tooltip 读取实际快捷键设置。
 - 工具栏分左右两组：左侧为“加入窗口… / 分离窗口…”相邻的窗口组，再是收藏与标签组 / 会话与恢复；右侧只保留打开对话框的搜索（设置移入应用菜单）；两组及中缝都画同一条底部分界线。加入图标为箭头进入窗口，分离图标为箭头离开窗口，设置使用实心齿轮（非放射线太阳形）。分离按钮菜单统一为“关闭当前窗口 / 分离当前窗口 / 分离所有窗口 / 关闭应用并分离所有窗口”，最后一项仍走 detach / restore。
 - 工具栏取消按钮（X，提示“取消操作”）由 `MainForm.UpdateCancelAffordance` 控制：新建/复制、打开工作区、手动保存、搜索目录读取等用户可感知操作持续约 450 ms 后才显示；自动会话保存通过 `workspaceOperationSilent` 静默，不显示取消按钮。`PollWindows` 每 1.5 s 调用 `SetCreationControls` 时不会重启延迟计时；操作提前结束则计时停止，快速操作不闪。
@@ -131,11 +133,11 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 
 ### 3.7 打包与出包目录
 - `package.bat` → `scripts/package.ps1`；版本只从 `Directory.Build.props` 的 `<Version>` 读取，不在脚本里写死。
-- 根目录 `build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `ci.bat` 只做参数透传与前置检查，构建 / 测试逻辑仍集中在 `scripts/build.ps1`；`verify.bat` 用 `-TreatWarningsAsErrors` 传入警告即错误并追加 `check-docs.sh`，`clean.bat` 不 taskkill，`run.bat` 仅由用户显式启动。
+- 根目录 `build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `dev.bat` / `ci.bat` 只做参数透传与前置检查，构建 / 测试逻辑仍集中在 `scripts/build.ps1`；`verify.bat` 用 `-TreatWarningsAsErrors` 传入警告即错误并追加 `check-docs.sh`，`clean.bat` 不 taskkill，`run.bat` 仅由用户显式启动；`dev.bat` 先构建、检测到已有 ExplorerTabs 时拒绝启动，否则运行 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`。
 - 只清理 `dist/dev`、`dist/release`、`.runtime/staging`；历史 `dist/vX-release` 是用户入口与历史包，禁止整目录删除。暂存目录仅在两个 zip 都成功后删除。
 - dev zip 根含 `ExplorerTabs_<版本>_x64-unpack-debug/`；release zip 从 `dist/release/unpack` 内部打包，解压后 exe 直接在根下。release 不含 PDB，dev 含 PDB / build-info / logs；release 另复制 README.md 及其引用的图标 / 截图，保证离线可读。
 - 不生成 setup.exe：项目不引入第三方 NuGet 或 Inno Setup，release 以免安装解压包分发。
-- 打包前只检测运行中的 ExplorerTabs：目标位于 `dist/` 下则报错退出；绝不 taskkill、不关闭用户 Explorer。zip 用 .NET `ZipFile` 生成，不依赖外部 tar。
+- 打包前检测运行中的 ExplorerTabs：列出 PID / 路径并询问；默认取消，只有输入 `Y` 才先 `CloseMainWindow`（12 秒）再对剩余进程强制结束，然后继续打包并清理 dist；绝不自动关闭宿主，也不操作用户 Explorer。非交互输入（stdin 重定向）直接拒绝并保留 dist。zip 用 .NET `ZipFile` 生成，不依赖外部 tar。
 
 ## 4. 接口契约
 | 接口 | 契约 |
@@ -147,7 +149,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | WindowSession.CloseRequestedUtc | 仅本次请求时间；不持久化为跨运行 HWND 状态，不代替恢复快照 |
 | IWorkspaceLibraryStore / WorkspaceLibrary | 版本 1；100 收藏 / 50 组 / 每会话 1–100 标签；1 MB；验证、深复制、原子替换 |
 | WorkspaceLibrary.SameSession | 比较目录 / 别名 / active index；忽略新生成 ID，用于避免周期重复写盘 |
-| AppSettings | 版本 1 向后兼容缺字段：WrapTabs=false、MaximumTabRows=3、RememberSession=true、22 默认 KeyBindings |
+| AppSettings | 版本 1 向后兼容缺字段：WrapTabs=false、MaximumTabRows=3、RememberSession=true、22 默认 KeyBindings；Bounds / Maximized 在正常退出时保存，启动经 SettingsLayoutPolicy 按工作区夹取后恢复 |
 | HostShortcutPolicy.Handle | 物理 down/up 配对，repeat 不重触发，注入不消费；scope / create / switch / active 权限限制 |
 | MainForm.managedMenuCleanups / closedManagedMenus / disposingUi | 临时菜单归宿主所有；Closed 标记待清理，下一 UI turn 释放；宿主销毁清剩余且不执行迟到命令 / 恢复可见性 |
 | MainForm.ShowManagedMenuAtScreenPoint / CreateAppMenu / CreateAddWindowsMenu | 与锚点菜单共用模态 / 延后释放；应用菜单为设置 / 关闭（分离所有窗口） / 关闭 / 关于；加入菜单候选仍按精确 Handle 去重并走 AttachSelectedWindows 身份校验，候选项文案带加入前缀与 Tooltip |

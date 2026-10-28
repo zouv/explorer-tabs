@@ -588,7 +588,7 @@ namespace ExplorerTabs.Tests
                     (WindowSession)b.GetType().GetProperty("Session")!.GetValue(b)! == session);
                 int TabCount() => TabControls(strip).Length;
                 bool Interacting() => (bool)stripType.GetProperty("IsInteracting")!.GetValue(strip)!;
-                Refresh(); form.Width = 720; MakeHidden(form);
+                Refresh(); form.Width = form.MinimumSize.Width; MakeHidden(form);
                 var tipMethod = stripType.GetMethod("TooltipFor", BindingFlags.Static | BindingFlags.NonPublic)!;
                 var plainTip = (string)tipMethod.Invoke(null, new object?[] { first, null })!;
                 Check(plainTip.Contains("目录：未缓存") && !plainTip.Contains("拖动排序"),
