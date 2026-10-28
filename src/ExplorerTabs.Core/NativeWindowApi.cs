@@ -149,11 +149,40 @@ namespace ExplorerTabs.Core
             {
                 var targetContext = NativeMethods.GetWindowDpiAwarenessContext(snapshot.Identity.Hwnd);
                 var hostContext = NativeMethods.GetWindowDpiAwarenessContext(host);
-                if (targetContext == IntPtr.Zero || hostContext == IntPtr.Zero ||
-                    !NativeMethods.AreDpiAwarenessContextsEqual(targetContext, hostContext))
-                    throw new InvalidOperationException("Explorer 与宿主的 DPI awareness 不一致，已拒绝 SetParent。请用顶层分组模式，或重启宿主自动匹配 DPI。");
+                if (targetContext == IntPtr.Zero || hostContext == IntPtr.Zero)
+                    throw new InvalidOperationException("无法读取 Explorer 或宿主的 DPI awareness，已拒绝 SetParent。请用顶层分组模式。");
+                if (!NativeMethods.AreDpiAwarenessContextsEqual(targetContext, hostContext))
+                {
+                    // Cross-process SetParent (unlike in-process) makes Windows reset the child's
+                    // DPI awareness to the host's. That is safe only when the effective DPI is
+                    // identical and the Explorer is the lower-awareness side; otherwise the shell
+                    // would be forced into a different scale. This is the post-boot rundll32 case.
+                    uint targetDpi = NativeMethods.GetDpiForWindow(snapshot.Identity.Hwnd);
+                    uint hostDpi = NativeMethods.GetDpiForWindow(host);
+                    bool allowed = AllowDpiMismatch(targetContext, hostContext, targetDpi, hostDpi);
+                    Trace($"attach.dpi-mismatch HWND=0x{snapshot.Identity.Handle:X} host=0x{host.ToInt64():X} " +
+                        $"hostContext={DescribeDpi(host)}({hostDpi}) targetContext={DescribeDpi(snapshot.Identity.Hwnd)}({targetDpi}) allowed={allowed}");
+                    if (!allowed)
+                        throw new InvalidOperationException(
+                            $"Explorer 与宿主的 DPI awareness 不一致（宿主 {DescribeDpi(host)} / {hostDpi} DPI，" +
+                            $"Explorer {DescribeDpi(snapshot.Identity.Hwnd)} / {targetDpi} DPI），已拒绝 SetParent。" +
+                            "请改用顶层分组模式；不感知 DPI 的 Explorer 需要与宿主处于相同的有效 DPI 才能嵌入。");
+                }
             }
         }
+
+        private static bool AllowDpiMismatch(IntPtr targetContext, IntPtr hostContext, uint targetDpi, uint hostDpi)
+        {
+            if (targetContext == IntPtr.Zero || hostContext == IntPtr.Zero) return false;
+            if (NativeMethods.AreDpiAwarenessContextsEqual(targetContext, hostContext)) return true;
+            if (targetDpi == 0 || hostDpi == 0 || targetDpi != hostDpi) return false;
+            bool lowerTarget = IsDpiContext(targetContext, -1) || IsDpiContext(targetContext, -2) || IsDpiContext(targetContext, -5);
+            bool perMonitorHost = IsDpiContext(hostContext, -3) || IsDpiContext(hostContext, -4);
+            return lowerTarget && perMonitorHost;
+        }
+
+        private static bool IsDpiContext(IntPtr context, int predefined) =>
+            NativeMethods.AreDpiAwarenessContextsEqual(context, new IntPtr(predefined));
 
         public void Attach(WindowSnapshot snapshot, IntPtr host, Rectangle bounds)
         {
@@ -417,12 +446,27 @@ namespace ExplorerTabs.Core
 
         public static void MatchThreadDpiToExplorer()
         {
-            // Called on the STA thread BEFORE creating any WinForms HWNDs.
-            var candidates = DiscoverExplorers();
-            if (candidates.Count == 0) return;
-            var context = NativeMethods.GetWindowDpiAwarenessContext(candidates[0].Hwnd);
-            if (context == IntPtr.Zero || NativeMethods.SetThreadDpiAwarenessContext(context) == IntPtr.Zero)
+            // Called on the STA thread BEFORE creating any WinForms HWNDs. Only per-monitor
+            // candidates are adopted: a leftover rundll32 (Unaware) window must not downgrade
+            // the whole host UI. Without a per-monitor candidate the manifest's PerMonitorV2 stays.
+            var contexts = new List<IntPtr>();
+            foreach (var candidate in DiscoverExplorers())
+                contexts.Add(NativeMethods.GetWindowDpiAwarenessContext(candidate.Hwnd));
+            var context = PreferredThreadDpiContext(contexts);
+            if (context == IntPtr.Zero) return;
+            if (NativeMethods.SetThreadDpiAwarenessContext(context) == IntPtr.Zero)
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "无法匹配 Explorer 的 DPI awareness。");
+        }
+
+        private static IntPtr PreferredThreadDpiContext(IEnumerable<IntPtr> contexts)
+        {
+            IntPtr perMonitorV1 = IntPtr.Zero;
+            foreach (var context in contexts)
+            {
+                if (IsDpiContext(context, -4)) return new IntPtr(-4);
+                if (perMonitorV1 == IntPtr.Zero && IsDpiContext(context, -3)) perMonitorV1 = new IntPtr(-3);
+            }
+            return perMonitorV1;
         }
 
         public static NativeRect ReadRect(IntPtr hwnd)
@@ -456,7 +500,10 @@ namespace ExplorerTabs.Core
             var previous = NativeMethods.SetParent(hwnd, parent);
             int error = Marshal.GetLastWin32Error();
             // A formerly unowned top-level window legitimately has a NULL previous parent.
-            if (previous == IntPtr.Zero && error != 0) throw new Win32Exception(error, "SetParent");
+            // Cross-process SetParent may also leave a non-zero last-error while succeeding,
+            // so verify the actual parent before treating the call as failed.
+            if (previous == IntPtr.Zero && error != 0 && NativeMethods.GetParent(hwnd) != parent)
+                throw new Win32Exception(error, "SetParent");
         }
         private static void FrameChanged(IntPtr hwnd) => Check(NativeMethods.SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
             NativeMethods.SwpNoMove | NativeMethods.SwpNoSize | NativeMethods.SwpNoZOrder |

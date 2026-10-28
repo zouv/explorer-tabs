@@ -38,6 +38,8 @@ namespace ExplorerTabs.App
         private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入窗口…");
         private readonly IconButton newTab = new IconButton(UiGlyph.NewTab, "新建标签") { Primary = true };
         private readonly IconButton cancelCreation = new IconButton(UiGlyph.Cancel, "取消操作") { Visible = false };
+        private readonly System.Windows.Forms.Timer cancelRevealTimer = new System.Windows.Forms.Timer { Interval = 450 };
+        private bool cancelWanted;
 
         public MainForm(HostController controller, AppLog log)
             : this(controller, log, new AppSettings(), null, new StaExplorerTabService(() => new ShellExplorerBackend())) { }
@@ -69,6 +71,7 @@ namespace ExplorerTabs.App
             add.Click += (_, __) => ShowAddWindowsMenu();
             newTab.Click += async (_, __) => await CreateTabAsync(null);
             cancelCreation.Click += (_, __) => { creation?.Cancel(); workspaceOperation?.Cancel(); foreach (var close in closeReading.Values.ToArray()) close.Cancel(); };
+            cancelRevealTimer.Tick += (_, __) => CancelRevealTick();
 
             tabs.Padding = new Padding(2, 2, 2, 0);
             tabs.Selected += SelectTab;
@@ -216,10 +219,34 @@ namespace ExplorerTabs.App
         {
             newTab.Enabled = !pending && workspaceOperation == null && !explorerTabs.IsBusy;
             addWindows.Enabled = !pending && workspaceOperation == null;
-            cancelCreation.Visible = pending || workspaceOperation != null;
+            // Automatic session saving shares workspaceOperation but is invisible background
+            // work; only user-facing operations (and new-tab creation) offer cancellation.
+            UpdateCancelAffordance(pending || (workspaceOperation != null && !workspaceOperationSilent));
             foreach (WelcomePanel welcome in content.Controls) welcome.SetPending(pending || workspaceOperation != null || explorerTabs.IsBusy);
             mode.Enabled = !pending && workspaceOperation == null && controller.Sessions.Count == 0;
             SyncShortcutScope();
+        }
+
+        private void UpdateCancelAffordance(bool wanted)
+        {
+            if (!wanted)
+            {
+                cancelWanted = false;
+                cancelRevealTimer.Stop();
+                cancelCreation.Visible = false;
+                return;
+            }
+            // Keep the glyph hidden for quick operations; PollWindows must not restart this delay.
+            if (cancelWanted) return;
+            cancelWanted = true;
+            cancelRevealTimer.Stop();
+            cancelRevealTimer.Start();
+        }
+
+        private void CancelRevealTick()
+        {
+            cancelRevealTimer.Stop();
+            if (cancelWanted && !IsDisposed && !closing) cancelCreation.Visible = true;
         }
 
         private void QueueNewTab()
@@ -703,6 +730,7 @@ namespace ExplorerTabs.App
                 nativeMenuScope?.Dispose(); nativeMenuScope = null;
                 foreach (var close in closeReading.Values.ToArray()) close.Cancel();
                 workspaceOperation?.Cancel(); creation?.Cancel(); keyboard?.Dispose(); monitor.Dispose();
+                cancelRevealTimer.Stop(); cancelRevealTimer.Dispose();
                 DisposeManagedMenus(); presentation.Dispose(); chromeTips.Dispose();
             }
             base.Dispose(disposing);

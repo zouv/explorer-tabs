@@ -53,6 +53,37 @@ namespace ExplorerTabs.Tests
                     Check(host.Sessions.Count == 2 && host.Active!.Identity.Handle == 3 && host.Active.CustomTitle == "资料 & 开发" && service.CreatedPaths.Last() == @"D:\NewPath" && UiField<Stack<WorkspaceTab>>(form, "closedTabs").Count == 0, "reopen uses captured directory/alias and consumes only successful entry");
                     Check(service.Exclusions.Last().Contains(2), "workspace creation excludes already-managed HWND identities");
                 }
+                var silentHost = new HostController(new FakeWindows(), new FakeStore()); Add(silentHost, 1);
+                var silentService = new WorkspaceService { HoldRead = true };
+                using (var form = WorkspaceForm(silentHost, silentService, directory, new WorkspaceStore()))
+                {
+                    var automatic = WorkspaceTask(form, "SaveSessionAsync", true);
+                    Check(UiField<bool>(form, "workspaceOperationSilent") &&
+                        !UiField<Button>(form, "cancelCreation").Visible,
+                        "automatic session save is silent and never exposes the cancel glyph");
+                    PumpFor(700);
+                    Check(!UiField<Button>(form, "cancelCreation").Visible,
+                        "silent automatic save stays hidden after the reveal delay");
+                    UiCall(form, "PollWindows");
+                    Check(!UiField<Button>(form, "cancelCreation").Visible,
+                        "monitor polling does not re-show cancel for a silent autosave");
+                    silentService.FinishRead(); PumpTask(automatic);
+                    Check(!UiField<bool>(form, "workspaceOperationSilent") &&
+                        !UiField<Button>(form, "cancelCreation").Visible,
+                        "silent autosave clears its flag and keeps cancel hidden");
+
+                    silentService.HoldRead = true;
+                    var manual = WorkspaceTask(form, "SaveSessionAsync", false);
+                    Check(!UiField<bool>(form, "workspaceOperationSilent"), "manual session save is not silent");
+                    Check(PumpUntil(() => UiField<Button>(form, "cancelCreation").Visible, 1200),
+                        "manual session save exposes the cancel glyph");
+                    UiCall(form, "PollWindows");
+                    Check(UiField<Button>(form, "cancelCreation").Visible,
+                        "monitor polling keeps cancel visible for user-initiated workspace work");
+                    silentService.FinishRead(); PumpTask(manual);
+                    Check(!UiField<Button>(form, "cancelCreation").Visible,
+                        "manual save hides cancel after completion");
+                }
                 var restoreApi = new FakeWindows(); var restoreHost = new HostController(restoreApi, new FakeStore()); var restoreService = new WorkspaceService(); var library = new WorkspaceStore { Value = new WorkspaceLibrary { LastSession = SampleWorkspace() } };
                 using (var form = WorkspaceForm(restoreHost, restoreService, directory, library))
                 {

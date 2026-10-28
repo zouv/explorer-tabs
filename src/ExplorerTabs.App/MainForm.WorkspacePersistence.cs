@@ -59,7 +59,7 @@ namespace ExplorerTabs.App
         private async Task SaveSessionAsync(bool automatic)
         {
             if (workspaceOperation != null || libraryStore == null || creation != null) return;
-            var operation = new CancellationTokenSource(automatic ? 7000 : 30000); workspaceOperation = operation; SetCreationControls(false);
+            var operation = new CancellationTokenSource(automatic ? 7000 : 30000); workspaceOperation = operation; workspaceOperationSilent = automatic; SetCreationControls(false);
             try
             {
                 var saved = await CaptureWorkspaceAsync(operation.Token);
@@ -74,7 +74,7 @@ namespace ExplorerTabs.App
                 if (automatic) { log.Write("Session auto-save failed; prior file retained", error); if (!IsDisposed) status.Text = "会话自动保存未完成，旧会话保留（详见日志）。"; }
                 else throw;
             }
-            finally { workspaceOperation = null; operation.Dispose(); if (!IsDisposed && !closing) SetCreationControls(creation != null); }
+            finally { workspaceOperation = null; workspaceOperationSilent = false; operation.Dispose(); if (!IsDisposed && !closing) SetCreationControls(creation != null); }
         }
         private async Task SaveGroupAsync()
         {

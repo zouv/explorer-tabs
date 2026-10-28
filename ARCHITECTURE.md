@@ -32,7 +32,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | src/ExplorerTabs.App/MainForm.cs | 接管、激活、分离、创建、轮询、模态范围与 UI 状态同步 |
 | src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏左右分组、加入窗口候选菜单、分离菜单、临时菜单所有权 / 延后释放、启动恢复横条、收藏与组 CRUD、收藏管理弹窗入口、QueueUi |
 | src/ExplorerTabs.App/LibraryManagerDialog.cs | “收藏”管理：目录管理 / 组管理两页；打开、收藏目录、重命名、移除、删除；修改留在私有副本，保存后由宿主统一校验持久化 |
-| src/ExplorerTabs.App/MainForm.WorkspacePersistence.cs | 有界串行目录捕获、完整会话保存、串行显式恢复、自动保存、退出预保存 |
+| src/ExplorerTabs.App/MainForm.WorkspacePersistence.cs | 有界串行目录捕获、完整会话保存、串行显式恢复、自动保存静默（不暴露取消）、退出预保存 |
 | src/ExplorerTabs.App/MainForm.Commands.cs | 精确关闭 / 完成检测 / 重开栈、关闭后左邻聚焦、标签搜索、命令面板与路由 |
 | src/ExplorerTabs.App/QuickPickerDialog.cs | 双行搜索列表，AND 分词、键盘导航、无匹配与 Esc |
 | src/ExplorerTabs.App/TabStrip.cs | 本地标签点击 / 拖动 / 悬停关闭按钮 / 单行滚动 / 多行与纵向溢出；缓存目录 Tooltip；尾部挂新建按钮但不参与标签测宽 / 排序；不接管文件拖放 |
@@ -45,7 +45,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | src/ExplorerTabs.Core/HostShortcuts.cs | 22 操作、默认与候选组合、重复验证、物理 down/up / 注入 / repeat 策略 |
 | src/ExplorerTabs.Core/WindowClosing.cs | identity 校验后 PostMessage(WM_CLOSE)，不 detach / Quit / kill |
 | src/ExplorerTabs.Core/FolderTarget.cs、AppSettings.cs | 普通目录验证；设置默认值兼容、深复制与原子写盘 |
-| src/ExplorerTabs.Core/NativeWindowApi.cs、TaskbarService.cs、RestorePresentation.cs、RecoveryJournal.cs | Win32 / Shell 操作、恢复结构 / 显示顺序、只读呈现采样、事故日志 |
+| src/ExplorerTabs.Core/NativeWindowApi.cs、TaskbarService.cs、RestorePresentation.cs、RecoveryJournal.cs | Win32 / Shell 操作、DPI 兼容白名单、恢复结构 / 显示顺序、只读呈现采样、事故日志 |
 | tests/ExplorerTabs.Tests/DeferredCreationTests.cs、ChromeUiTests.cs | fake 创建取消 / 失败 / lease 并发与隐藏真实窗框 / 紧凑布局 / 图标 tooltip；不运行真实 Explorer |
 | tests/ExplorerTabs.Tests/EmbeddedChromeTests.cs | 自注册 Ribbon 类与隐藏自建 HWND 测标题区测量 / 根窗口裁切 / 未知布局回退 / 非 Explorer 恢复；不操作真实 Shell |
 | assets/icons/、assets/screenshots/ | 三版原创 SVG、对比预览、暂用 A 的多尺寸 ICO / 嵌入资源；README 引用的离屏单行 / 多行截图（不含真实 Explorer 内容） |
@@ -63,6 +63,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 产品 / 旧版身份 | ProductIdentity.GetStateDirectory / GetMutexName、Program.Main、BrandingUnitTests | 继续旧 LocalAppData 目录与 per-user Local mutex；仅测试合成身份，不争用实际宿主 |
 | 灰框 / 空栏 | MainForm.WndProc / InvalidateChrome、NativeWindowApi.MeasureEmbeddedTitleInset / EmbeddedViewportBounds / Layout | WM_NCPAINT 抑制 / NCACTIVATE lParam=-1；仅精确 Explorer 嵌入根窗口裁切，不改 Ribbon / 恢复快照 |
 | 新建 / 复制 | MainForm.CreateTabAsync / QueueCreateFromMenu、ExplorerCreationWorkflow.Run / Verify | 15 秒；排除已有与受管 HWND，核验后延迟呈现；结果 using / Dispose，成功 MarkAttached；迟到不接管 |
+| DPI / 嵌入兼容 | NativeWindowApi.ValidateAttach / AllowDpiMismatch / IsDpiContext / MatchThreadDpiToExplorer / PreferredThreadDpiContext、MainForm.SetCreationControls | 宿主保持 PerMonitor/PMv2；仅低 awareness 子窗口 + PerMonitor/PMv2 宿主 + 有效 DPI 相等时允许跨 context SetParent；其余 mismatch / context 不可读仍拒绝并记录 host/target；自动保存不显示取消 |
 | 窗框 / 图标工具栏 | MainForm.InitializeChrome / WndProc / ChromeHitTest、InitializeWorkspaceUi / UpdateToolbarHints、TabStrip.PreferredChromeHeight | 无 WS_CAPTION 但保留系统 / 缩放样式；右上角 X / Alt+F4 关闭所有会话窗口后退出；100% 单行栏各 36 px |
 | 工具栏 / 标签栏布局 | MainForm.InitializeWorkspaceUi、MainForm.PaintToolbarDivider、TabStrip.SetTrailingControl / UpdateRows | 加入窗口与分离窗口相邻在左组；右组只保留搜索（设置移入应用菜单）；新建按钮紧跟最后一个标签且不参与测宽 / 拖动排序 |
 | 弹窗样式 / 标题栏 | DialogStyle.Apply / DrawBorder、DialogTitleBar、QuickPickerDialog / SettingsDialog / RenameTabDialog / WindowPicker / AboutDialog / LibraryManagerDialog | 无边框自定义标题栏（标题 / 关闭 / 拖动）替代原生厚边框；1px 圆角边框 + Win10 窗口 region 小圆角；不改系统文件 / 文件夹选择框 |
@@ -89,6 +90,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - 0.4.1 Navigate2 使用完整原生 dual vtable、PIDL 的 VT_ARRAY|VT_UI1 与 optional VT_EMPTY。原生 stub 与用户真机基线均验证；不改回晚绑定 Type.Missing。
 - 新窗口来自自己创建的 ShellBrowserWindow 引用；禁止运行 explorer.exe 后猜最新 HWND，禁止 Quit 或杀共享进程。
 - ShellBrowserWindow 通常由 explorer.exe 托管；开机后 Shell 类工厂尚未就绪时，COM 会改用注册的 LocalServer32 宿主 `rundll32.exe shell32.dll,SHCreateLocalServerRunDll`。`NativeWindowApi.IsExplorer` 接受这两种 Windows 自带宿主，但仍要求 CabinetWClass / ExploreWClass 且 HWND/PID/TID/启动时间/映像精确一致；不按标题、最新窗口或枚举顺序猜测。
+- 跨进程 `SetParent` 在 DPI awareness 不同时（Win10 1703+）会由 Windows 强制把子窗口 awareness 重置为宿主一侧，不是无害的虚拟化；同进程跨 context 则直接失败。因此嵌入白名单仅放行：Explorer 为 Unaware / UnawareGdiScaled / System、宿主为 PerMonitor / PerMonitorV2、且双方 `GetDpiForWindow` 非 0 且相等（开机 rundll32 宿主 + 100% DPI 的现场）。其余 mismatch 与任一 context 读取失败仍拒绝，并在 host.log 记 `attach.dpi-mismatch ... allowed=False`。`MatchThreadDpiToExplorer` 只采纳 PerMonitorV2（其次 PerMonitor）候选，绝不因首个 rundll32 Unaware 窗口把宿主 UI 降级；高 DPI 下同场景仍提示改用顶层分组模式。
 - 目录按 QueryService / QueryActiveShellView / GetWindow 的自己视图匹配；有视图时否决冲突的自动化 HWND。不用公共宿主根、标题、PID 或枚举顺序回退。PIDL 优先，精确匹配的 LocationURL 仅作视图不可用回退。
 - 窗口关闭与分离不同：close 不 Restore、不先删除标签；请求拒绝仍受管。PruneLost 日志失败时可重试但不得恢复已消失目标。未知身份查询错误不当作消失。
 - recovery.json 保存活窗口原结构；workspace.json 仅普通目录 / 顺序 / 别名 / active index。后者不含 HWND、选中项、滚动或浏览历史，不能替代事故恢复。
@@ -110,6 +112,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - WM_NCCALCSIZE 去独立标题框；窗框保留系统菜单 / 边缘缩放 / 工作区最大化。品牌及三个窗口按钮固定第一行，多行只增长标签区域；空白拖动 / 双击最大化。
 - 单行标签栏与工具栏各约 36 px（100%）；仅溢出才增加滚动高度；工具栏在自身底部画 1px 低饱和度线，不增加空行。分组图标按钮有 Tooltip / AccessibleName / hover / focus；tooltip 读取实际快捷键设置。
 - 工具栏分左右两组：左侧为“加入窗口… / 分离窗口…”相邻的窗口组，再是收藏与标签组 / 会话与恢复；右侧只保留打开对话框的搜索（设置移入应用菜单）；两组及中缝都画同一条底部分界线。加入图标为箭头进入窗口，分离图标为箭头离开窗口，设置使用实心齿轮（非放射线太阳形）。分离按钮菜单统一为“关闭当前窗口 / 分离当前窗口 / 分离所有窗口 / 关闭应用并分离所有窗口”，最后一项仍走 detach / restore。
+- 工具栏取消按钮（X，提示“取消操作”）由 `MainForm.UpdateCancelAffordance` 控制：新建/复制、打开工作区、手动保存、搜索目录读取等用户可感知操作持续约 450 ms 后才显示；自动会话保存通过 `workspaceOperationSilent` 静默，不显示取消按钮。`PollWindows` 每 1.5 s 调用 `SetCreationControls` 时不会重启延迟计时；操作提前结束则计时停止，快速操作不闪。
 - 加入已有窗口先弹托管菜单：直接列出 `DiscoverExplorers` 中未被接管的窗口，文案为 `加入【标题】窗口`（Tooltip 说明点击行为并附 PID / HWND），点击单项即按精确身份加入；无候选显示禁用占位；底部分隔项“打开“加入”管理界面”再打开原 `WindowPicker`。发现异常只记日志并按空列表显示，不猜测窗口。
 - 左上角品牌图标与标签栏空白右键统一打开托管应用菜单：设置 / 关闭（分离所有窗口） / 关闭 / 关于（单独分组置底），移除移动 / 大小 / 最大最小化；两个关闭项均带 Tooltip，关闭项显示 Alt+F4，快捷键统一由 `ShortcutKeyDisplayString` 画在右侧快捷键列。右上角 X、Alt+F4、菜单“关闭”都请求精确 WM_CLOSE 所有 Attached 会话，全部消失后退出；10 秒未关闭则取消退出并保留宿主，不 kill、不恢复。菜单“关闭（分离所有窗口）”与分离菜单的“关闭应用并分离所有窗口”仍走 detach / restore。`ShowManagedMenuAtScreenPoint` 与锚点菜单共用同一生命周期 / 模态作用域；Alt+Space 仍由原生系统菜单处理。
 - 收藏菜单：收藏当前目录… / 收藏其他目录… / 保存当前标签组，随后是常用目录与标签组列表，底部分隔项“打开“收藏”管理界面”。管理弹窗分“目录管理 / 组管理”两页，可打开、收藏目录、重命名、移除常用目录，也可打开、重命名、删除标签组；所有修改只写入私有副本，点“保存”后由宿主 `CommitLibrary` 校验写盘，打开条目只返回待打开目标，不直接操作 Explorer。
@@ -154,11 +157,16 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | DialogStyle.Apply / DrawBorder / DialogTitleBar | 仅作用于宿主自建 `ShellDialog`；无边框自定义标题栏、关闭按钮与拖动；表单 1px Padding + 同半径 1px 边框；按 DPI 设置窗口圆角 region；不接管系统对话框、不改变窗口身份 |
 | WindowIdentity / NativeWindowApi.Matches | HWND + PID / TID / 进程启动 ticks / 映像 / 类名，不仅 HWND |
 | NativeWindowApi.IsExplorer | 仅 CabinetWClass / ExploreWClass，宿主映像限 `%WINDIR%\explorer.exe` 或 `%WINDIR%\System32\rundll32.exe`（ShellBrowserWindow 注册的 LocalServer32）；创建、加入、关闭、任务栏、事故恢复共用，不按标题 / PID / 枚举顺序猜测 |
+| NativeWindowApi.ValidateAttach / AllowDpiMismatch | 嵌入前读取 host/target DPI context 与 `GetDpiForWindow`；context 不可读、反向 mismatch、或有效 DPI 不等时抛含双方 context/DPI 的错误；仅低 awareness → PerMonitor/PMv2 且有效 DPI 相等时允许并记录 `attach.dpi-mismatch`；Grouped 不检查 |
+| NativeWindowApi.MatchThreadDpiToExplorer / PreferredThreadDpiContext | 仅在创建任何 WinForms HWND 前调用；只采纳 PerMonitorV2（其次 PerMonitor）候选，使用伪句柄 -4/-3；无 per-monitor 候选时保留 manifest 的 PerMonitorV2，绝不降级为 Unaware/System |
+| NativeWindowApi.ChangeParent | 跨进程 SetParent 以实际 `GetParent` 复核，避免把成功调用留下的非零 last-error 误判为失败；不改变恢复日志与身份校验 |
+| MainForm.SetCreationControls / UpdateCancelAffordance | 取消按钮只反映新建或非静默 workspace 操作；显示延迟约 450 ms，结束立即隐藏；`workspaceOperationSilent` 仅由自动会话保存设置，`PollWindows` 不重启计时 |
 | RecoveryJournal / AppSettingsStore / WorkspaceLibraryStore | 原子写；破坏性窗口操作前日志先行；坏原文件保留并禁用本次持久化 |
 
 ## 5. 构建与安全验证
 Windows + .NET SDK + .NET Framework 4.8 Developer Pack，无第三方 NuGet。
 入口：powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke。
 测试不启动真实 Shell、不 Show 交互宿主、不注册全局钩子；原生 COM stub 只本机 PIDL 解析。--workspace-ui-smoke 包含工作空间与窗框隐藏 UI 测试；--chrome-ui-smoke 可单独运行。--render-ui / --render-tabs / --render-tabs-hover / --render-workspace / --render-picker / --render-settings / --render-settings-keys / --render-rename / --render-about 生成隐藏实际控件图像。
+--cross-process-smoke 现在还启动 `--native-helper-unaware` 子进程：子进程在创建窗口前设为 DPI Unaware，主进程验证 context 读取、白名单判定、有效 DPI 相等时的跨 context SetParent / 布局 / Detach 恢复；有效 DPI 不同则验证拒绝路径。同进程跨 context 仍失败，不在覆盖范围。
 0.6.2 发布包 dist/v0.6.2-release/ExplorerTabs.exe 原样保留；当前打包入口与 dist 规则见 §3.7；保留所有旧 dist 原文件名 / 内容，清理仅限已核验项目 bin / obj；最终验证数量以 CHANGELOG / HANDOFF 为准。
 真实关闭、会话批量创建、新快捷键前台边界及多行实际 DPI 体验留用户在对话验收，不写新回归清单。

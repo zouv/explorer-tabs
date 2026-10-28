@@ -86,9 +86,11 @@ namespace ExplorerTabs.Tests
                         "UI passes existing attached handles and saved default directory to creation service");
                     service.Hold = true; service.NextHandle = 3;
                     task = (Task)UiCall(form, "CreateTabAsync", new object?[] { null })!;
-                    Check(!task.IsCompleted && !UiField<Button>(form, "newTab").Enabled && UiField<Button>(form, "cancelCreation").Visible &&
+                    Check(!task.IsCompleted && !UiField<Button>(form, "newTab").Enabled &&
                         !UiField<Button>(form, "addWindows").Enabled,
-                        "pending creation disables conflicting operations while exposing cancellation");
+                        "pending creation immediately disables conflicting operations");
+                    Check(PumpUntil(() => UiField<Button>(form, "cancelCreation").Visible, 1200),
+                        "pending creation exposes cancellation after the reveal delay");
                     using (var menu = (ContextMenuStrip)UiCall(form, "CreateAppMenu")!)
                         Check(!menu.Items.OfType<ToolStripMenuItem>().First(i => i.Text == "设置…").Enabled,
                             "pending creation disables the app-menu settings entry");
@@ -98,8 +100,9 @@ namespace ExplorerTabs.Tests
                     PumpTask((Task)UiCall(form, "CreateTabAsync", new object?[] { null })!);
                     Check(service.Calls == calls, "UI ignores parallel new-tab requests");
                     UiField<Button>(form, "cancelCreation").PerformClick(); PumpTask(task);
-                    Check(host.Sessions.Count == 2 && host.Active!.Identity.Handle == 2 && !UiField<Button>(form, "newTab").Enabled,
-                        "cancelled request keeps original tabs and respects worker still-busy gate");
+                    Check(host.Sessions.Count == 2 && host.Active!.Identity.Handle == 2 && !UiField<Button>(form, "newTab").Enabled &&
+                        !UiField<Button>(form, "cancelCreation").Visible,
+                        "cancelled request keeps original tabs, hides cancel and respects worker still-busy gate");
                     service.Finish(); Application.DoEvents(); UiCall(form, "SetCreationControls", false);
                     Check(host.Sessions.Count == 2 && UiField<Button>(form, "newTab").Enabled,
                         "late service completion never attaches cancelled window and unlocks only after worker exit");

@@ -23,6 +23,8 @@ namespace ExplorerTabs.App
         private readonly Dictionary<WindowSession, CancellationTokenSource> closeReading = new Dictionary<WindowSession, CancellationTokenSource>();
         private readonly Stack<WorkspaceTab> closedTabs = new Stack<WorkspaceTab>();
         private CancellationTokenSource? workspaceOperation;
+        // Automatic session saving shares workspaceOperation but must not expose the cancel glyph.
+        private bool workspaceOperationSilent;
         private bool workspaceTouched, exitPreparing, exitCaptureDone;
         private DateTime nextAutosave = DateTime.UtcNow.AddSeconds(20);
         private readonly FlowLayoutPanel sessionOffer = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8, 4, 8, 4), BackColor = Color.FromArgb(230, 239, 252), Visible = false };

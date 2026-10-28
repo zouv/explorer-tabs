@@ -23,6 +23,7 @@ namespace ExplorerTabs.Tests
             {
                 if (args.Length == 2 && args[0] == "--identity-probe") return ProbeIdentityMutex(args[1]);
                 if (args.Length == 3 && args[0] == "--native-helper") { NativeHelper(args[1], args[2]); return 0; }
+                if (args.Length == 3 && args[0] == "--native-helper-unaware") { NativeHelper(args[1], args[2], true); return 0; }
                 if ((args.Length == 2 || args.Length == 3) && args[0] == "--render-ui")
                 { RenderUi(args[1], args.Length == 3 ? int.Parse(args[2]) : (int?)null); return 0; }
                 if (args.Length >= 2 && args[0] == "--render-tabs")
@@ -39,9 +40,9 @@ namespace ExplorerTabs.Tests
                 else if (args.Contains("--creation-ui-smoke")) CreationUiSmoke();
                 else if (args.Contains("--chrome-ui-smoke")) ChromeUiSmoke();
                 else if (args.Contains("--tab-ui-smoke")) TabUiSmoke();
-                else if (args.Contains("--cross-process-smoke")) CrossProcessSmoke();
+                else if (args.Contains("--cross-process-smoke")) { CrossProcessSmoke(); CrossProcessUnawareSmoke(); }
                 else if (args.Contains("--native-smoke")) NativeSmoke();
-                else { UnitTests(); FeatureUnitTests(); DeferredCreationTests(); ShellInteropTests(); WorkspaceUnitTests(); BrandingUnitTests(); }
+                else { UnitTests(); DpiPolicyTests(); FeatureUnitTests(); DeferredCreationTests(); ShellInteropTests(); WorkspaceUnitTests(); BrandingUnitTests(); }
                 Console.WriteLine($"PASS: {count} checks. No existing Explorer window was modified.");
                 return 0;
             }
@@ -52,6 +53,17 @@ namespace ExplorerTabs.Tests
         {
             if (!condition) throw new Exception("FAIL: " + label);
             count++; Console.WriteLine("PASS " + label);
+        }
+        private static void PumpFor(int milliseconds)
+        {
+            var watch = Stopwatch.StartNew();
+            while (watch.ElapsedMilliseconds < milliseconds) { Application.DoEvents(); Thread.Sleep(10); }
+        }
+        private static bool PumpUntil(Func<bool> condition, int timeoutMs)
+        {
+            var watch = Stopwatch.StartNew();
+            while (!condition() && watch.ElapsedMilliseconds < timeoutMs) { Application.DoEvents(); Thread.Sleep(10); }
+            return condition();
         }
         private static Exception Throws(Action action)
         {
@@ -68,6 +80,31 @@ namespace ExplorerTabs.Tests
         private static readonly Rectangle Bounds = new Rectangle(0, 0, 640, 480);
         private static WindowSession Add(HostController host, long handle, HostingMode mode = HostingMode.Embedded) =>
             host.Attach(Identity(handle), new IntPtr(100), mode, Bounds);
+
+        private static void DpiPolicyTests()
+        {
+            var allow = typeof(NativeWindowApi).GetMethod("AllowDpiMismatch", BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new Exception("AllowDpiMismatch missing.");
+            bool Allow(int target, int host, uint targetDpi, uint hostDpi) =>
+                (bool)allow.Invoke(null, new object[] { new IntPtr(target), new IntPtr(host), targetDpi, hostDpi })!;
+            Check(Allow(-1, -4, 96, 96), "Unaware -> PerMonitorV2 allowed at equal effective DPI");
+            Check(!Allow(-1, -4, 96, 144), "Unaware -> PerMonitorV2 rejected at different effective DPI");
+            Check(!Allow(-4, -1, 96, 96), "PerMonitorV2 -> Unaware never allowed");
+            Check(Allow(-2, -4, 120, 120), "System -> PerMonitorV2 allowed at equal effective DPI");
+            Check(Allow(-5, -3, 96, 96), "UnawareGdiScaled -> PerMonitor allowed at equal effective DPI");
+            Check(Allow(-1, -1, 0, 0), "identical contexts are accepted before DPI comparison");
+            Check(!Allow(0, -4, 96, 96), "unreadable target context is rejected");
+            Check(!Allow(-1, -4, 0, 0), "zero effective DPI is rejected");
+
+            var preferred = typeof(NativeWindowApi).GetMethod("PreferredThreadDpiContext", BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new Exception("PreferredThreadDpiContext missing.");
+            IntPtr Preferred(params int[] values) =>
+                (IntPtr)preferred.Invoke(null, new object[] { values.Select(v => new IntPtr(v)).ToArray() })!;
+            Check(Preferred(-1, -2) == IntPtr.Zero, "no per-monitor candidate keeps the manifest context");
+            Check(Preferred(-1, -3) == new IntPtr(-3), "PerMonitor V1 is used only when no V2 candidate exists");
+            Check(Preferred(-1, -3, -4) == new IntPtr(-4), "PerMonitor V2 is preferred over V1");
+            Check(Preferred(-4, -3) == new IntPtr(-4), "PerMonitor V2 wins regardless of enumeration order");
+        }
 
         private static void UnitTests()
         {
@@ -994,8 +1031,96 @@ namespace ExplorerTabs.Tests
             }
         }
 
-        private static void NativeHelper(string ready, string stop)
+        private static void CrossProcessUnawareSmoke()
         {
+            Console.WriteLine("Cross-process unaware smoke creates its OWN helper process and hidden windows only.");
+            string directory = Path.Combine(Path.GetTempPath(), "ExplorerTabs-cross-process-unaware-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            string ready = Path.Combine(directory, "ready.txt"), stop = Path.Combine(directory, "stop.txt");
+            Process? helper = null;
+            HostController? controller = null;
+            try
+            {
+                helper = Process.Start(new ProcessStartInfo
+                {
+                    FileName = Assembly.GetExecutingAssembly().Location,
+                    Arguments = $"--native-helper-unaware \"{ready}\" \"{stop}\"",
+                    UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden
+                }) ?? throw new Exception("Could not start unaware helper.");
+                var watch = Stopwatch.StartNew();
+                while (!File.Exists(ready))
+                {
+                    if (helper.HasExited || watch.Elapsed.TotalSeconds > 10) throw new Exception("Unaware helper not ready.");
+                    Thread.Sleep(50);
+                }
+                var foreign = NativeWindowApi.Inspect(new IntPtr(long.Parse(File.ReadAllText(ready))));
+                Check(foreign.ProcessId == helper.Id && NativeWindowApi.DescribeDpi(foreign.Hwnd) == "Unaware",
+                    "owned helper window is a DPI-unaware top-level window");
+                var trace = new List<string>();
+                var api = new NativeWindowApi(trace: trace.Add);
+                var original = api.Capture(foreign);
+                using (var container = Synthetic("Cross-process unaware host"))
+                {
+                    IntPtr hostHwnd = container.Handle;
+                    Check(NativeWindowApi.DescribeDpi(hostHwnd) == "PerMonitorV2", "test host remains PerMonitorV2");
+                    api.Show(api.Capture(NativeWindowApi.Inspect(hostHwnd)), true, false);
+                    uint hostDpi = GetDpiForWindow(hostHwnd), targetDpi = GetDpiForWindow(foreign.Hwnd);
+                    controller = new HostController(api, new FakeStore());
+                    if (hostDpi != 0 && hostDpi == targetDpi)
+                    {
+                        var session = controller.Attach(foreign, hostHwnd, HostingMode.Embedded, Bounds);
+                        controller.Activate(session, Bounds);
+                        Check(api.Capture(foreign).Parent == hostHwnd.ToInt64(),
+                            "unaware helper embeds through cross-DPI SetParent at equal effective DPI");
+                        Check(NativeWindowApi.DescribeDpi(foreign.Hwnd) == "PerMonitorV2",
+                            "Windows reset the embedded helper to the host DPI context");
+                        controller.LayoutActive(new Rectangle(0, 0, 750, 500));
+                        var rect = NativeWindowApi.ReadRect(foreign.Hwnd);
+                        Check(rect.Right - rect.Left == 750, "cross-DPI-context layout resizes the unaware helper");
+                        Check(controller.DetachAll().Count == 0, "cross-DPI-context detach completes");
+                        var restored = api.Capture(foreign);
+                        Check(restored.Parent == original.Parent && restored.Style == original.Style &&
+                            restored.ExtendedStyle == original.ExtendedStyle,
+                            "cross-DPI-context detach restores original parent and styles");
+                        Check(trace.Any(line => line.Contains("attach.dpi-mismatch") && line.Contains("allowed=True")),
+                            "allowed DPI mismatch is traced with host/target contexts and DPIs");
+                    }
+                    else
+                    {
+                        var error = Throws(() => controller!.Attach(foreign, hostHwnd, HostingMode.Embedded, Bounds));
+                        Check(error.Message.Contains("DPI") && error.Message.Contains(hostDpi.ToString()) && error.Message.Contains(targetDpi.ToString()),
+                            "unequal effective DPI still rejects embedding with host/target DPI details");
+                        Check(controller!.Sessions.Count == 0, "rejected DPI mismatch creates no session");
+                        Check(trace.Any(line => line.Contains("attach.dpi-mismatch") && line.Contains("allowed=False")),
+                            "rejected DPI mismatch is traced");
+                    }
+                }
+                Check(!helper.HasExited, "unaware helper survives host container destruction");
+                File.WriteAllText(stop, "stop");
+                Check(helper.WaitForExit(5000) && helper.ExitCode == 0, "unaware helper exits normally");
+            }
+            finally
+            {
+                try { controller?.DetachAll(); } catch { /* The owned helper is stopped below. */ }
+                if (helper != null)
+                {
+                    if (!helper.HasExited)
+                    {
+                        File.WriteAllText(stop, "stop");
+                        if (!helper.WaitForExit(5000)) helper.Kill(); // This exact owned test process only.
+                    }
+                    helper.Dispose();
+                }
+                foreach (string file in Directory.GetFiles(directory)) File.Delete(file);
+                Directory.Delete(directory);
+            }
+        }
+
+        private static void NativeHelper(string ready, string stop, bool unaware = false)
+        {
+            // Must run before any WinForms HWND is created on this thread.
+            if (unaware && SetThreadDpiAwarenessContext(new IntPtr(-1)) == IntPtr.Zero)
+                throw new InvalidOperationException("SetThreadDpiAwarenessContext(UNAWARE) failed.");
             using (var window = Synthetic("Foreign helper"))
             using (var timer = new System.Windows.Forms.Timer { Interval = 50 })
             {
@@ -1007,6 +1132,10 @@ namespace ExplorerTabs.Tests
                 Application.Run(new ApplicationContext());
             }
         }
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hwnd);
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetWindowPlacement(IntPtr hwnd, ref WindowPlacement placement);

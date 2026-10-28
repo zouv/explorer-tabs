@@ -85,7 +85,7 @@ ExplorerTabs 是一个独立的 C# / WinForms 桌面程序。每个标签对应�
 
 ExplorerTabs 是实验性项目，**不是生产级窗口管理器**。
 
-- 嵌入模式通过跨进程 `SetParent` 调整真实 Explorer 窗口。Shell 未必能正确适应所有焦点、拖放与 DPI 语义；上下文不一致时会拒绝嵌入。
+- 嵌入模式通过跨进程 `SetParent` 调整真实 Explorer 窗口。Shell 未必能正确适应所有焦点、拖放与 DPI 语义；上下文不一致时，仅在 Explorer 为较低 DPI awareness、宿主为 PerMonitor/PerMonitorV2 且双方有效 DPI 相同时允许嵌入；其他情况仍拒绝并提示使用顶层分组模式。跨进程 `SetParent` 可能让子窗口进程的 DPI awareness 被 Windows 重置。
 - 关闭标签只请求目标临时窗口关闭，不结束 `explorer.exe`，也不操作其他 Explorer 窗口。
 - 接管前先写恢复日志；关闭 / 分离、失败回滚与部分事故恢复有保护，但**硬退出、进程被杀或 Explorer 崩溃不是完全可恢复的**。
 - 恢复快照包含 HWND、PID、线程 ID、进程启动时间、窗口类、样式与布局；启动恢复前会重新核对身份，但不消除所有句柄重用竞态。

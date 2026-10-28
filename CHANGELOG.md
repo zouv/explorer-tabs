@@ -3,10 +3,18 @@
 用户可感知变化按版本归档，遵循新增 / 变更 / 修复 / 移除 / 安全类别。
 历史版本准确发布日期未补造；迁移日为 2026-10-25。
 
-## [未发布]
+## [0.8.1] — 2026-10-28
 
 ### 新增
 - 根目录新增 Windows 批处理入口：`build.bat`（构建 + 基础检查）、`test.bat`（完整安全自动检查）、`verify.bat`（警告即错误构建 + 完整检查 + 文档体检）、`clean.bat`（清理 bin / obj / .runtime）、`run.bat`（手动启动 release / dev 包）、`ci.bat`（clean → verify → package），与既有 `package.bat` / `manager.sh` 对应。`clean.bat` 不结束运行中的宿主，`run.bat` 仅用于手动启动真实交互宿主。
+
+### 修复
+- 修复开机后新建 / 加入标签被 DPI awareness 校验拒绝：当 ShellBrowserWindow 由注册的 `rundll32.exe` 宿主创建且为 DPI Unaware、宿主为 PerMonitorV2 时，只要双方有效 DPI 相同（如 100%），允许跨进程嵌入；有效 DPI 不同或反向 mismatch 仍拒绝并提示改用顶层分组模式，错误信息与 host.log 记录双方 context / DPI。
+- 修复工具栏“取消操作”X 在自动会话保存时周期性闪现：自动保存改为静默且不显示取消按钮；新建 / 打开工作区 / 手动保存 / 搜索等用户可感知操作持续约 0.5 秒后才显示，快速操作不再闪烁。
+- 启动时只采纳 PerMonitor / PerMonitorV2 Explorer 的 DPI context，避免首个 rundll32 Unaware / System 候选把整个宿主 UI 降级为 DPI 不感知。
+
+### 安全
+- 跨进程 smoke 新增 Unaware helper：覆盖 DPI context 读取、白名单判定、有效 DPI 相等时的 SetParent / 布局 / Detach 恢复；有效 DPI 不同则覆盖拒绝路径；不操作真实 Explorer。
 
 ## [0.8.0] — 2026-10-27
 

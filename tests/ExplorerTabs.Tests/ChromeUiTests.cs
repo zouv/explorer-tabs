@@ -89,8 +89,15 @@ namespace ExplorerTabs.Tests
                     Check(strip.VerticalScroll.Visible && !strip.HorizontalScroll.Visible, "wrapped browser chrome keeps vertical overflow");
                     Check(!api.Events.Any(e => e.StartsWith("restore")), "browser chrome layout never reparents or restores managed Explorer");
                     UiCall(form, "SetCreationControls", true);
-                    Check(!newButton.Enabled && UiField<Button>(form, "cancelCreation").Visible, "async preparation disables new commands and exposes cancel glyph");
+                    Check(!newButton.Enabled, "async preparation immediately disables new commands");
+                    Check(PumpUntil(() => UiField<Button>(form, "cancelCreation").Visible, 1200),
+                        "async preparation exposes the cancel glyph after the reveal delay");
                     UiCall(form, "SetCreationControls", false);
+                    Check(!UiField<Button>(form, "cancelCreation").Visible, "cancel glyph hides immediately when preparation ends");
+                    UiCall(form, "SetCreationControls", true);
+                    UiCall(form, "SetCreationControls", false);
+                    PumpFor(700);
+                    Check(!UiField<Button>(form, "cancelCreation").Visible, "quick preparation never flashes the cancel glyph");
                     settings.ShortcutsEnabled = true; UiCall(form, "ApplySettings", settings);
                     using (var appMenu = (ContextMenuStrip)UiCall(form, "CreateAppMenu")!)
                     {
