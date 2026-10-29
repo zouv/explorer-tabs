@@ -248,7 +248,7 @@ namespace ExplorerTabs.App
             menu.Items.Add(new ToolStripSeparator());
             foreach (var favorite in library.Favorites)
             {
-                var item = new ToolStripMenuItem("★ " + favorite.Name) { ToolTipText = favorite.Directory };
+                var item = new ToolStripMenuItem("★ " + favorite.Name) { ToolTipText = FolderTarget.Display(favorite.Directory) };
                 item.DropDownItems.Add("打开为新标签", null, (_, __) => QueueUi(() => OpenWorkspaceAsync(new SavedWorkspace { Name = favorite.Name, Tabs = new List<WorkspaceTab> { new WorkspaceTab { Directory = favorite.Directory } } })));
                 item.DropDownItems.Add("重命名…", null, (_, __) => QueueUi(() => RenameLibraryItemAsync(favorite.Id, false)));
                 item.DropDownItems.Add("移除收藏（不关闭窗口）", null, (_, __) => QueueMenuAction(() => RunSafely("移除收藏失败", () => { var copy = library.Copy(); copy.Favorites.RemoveAll(f => f.Id == favorite.Id); CommitLibrary(copy); }))); item.Enabled = workspaceOperation == null; menu.Items.Add(item);

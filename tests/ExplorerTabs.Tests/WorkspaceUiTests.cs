@@ -313,17 +313,21 @@ namespace ExplorerTabs.Tests
                 form.Width = 720; UiCall(form, "RefreshTabs"); form.PerformLayout(); var tabs = UiField<FlowLayoutPanel>(form, "tabs"); tabs.PerformLayout();
                 var controls = TabControls(tabs);
                 Check(tabs.WrapContents && tabs.Height <= tabs.Padding.Vertical + 3 * 38 && controls.Select(c => c.Top).Distinct().Count() > 3, "100 wrapped tabs cap visible rows while retaining all rows");
-                Check(tabs.VerticalScroll.Visible && !tabs.HorizontalScroll.Visible, "wrapped overflow uses vertical scrolling only");
+                Check((bool)UiAnyCall(tabs, "HasVerticalScrollbar")! && !(bool)UiAnyCall(tabs, "HasHorizontalScrollbar")!,
+                    "wrapped overflow uses the custom vertical bar only");
                 Check(controls.All(c => c.Left >= 0 && c.Right <= tabs.ClientSize.Width), "all wrapped buttons fit client width including scrollbar");
-                UiAnyCall(tabs, "Reveal", host.Sessions.Last()); Check(controls.Last().Bottom <= tabs.ClientSize.Height && tabs.AutoScrollPosition.Y < 0, "last wrapped tab reveals within capped viewport");
-                int offset = tabs.AutoScrollPosition.Y; UiCall(form, "RefreshTabs"); Check(tabs.AutoScrollPosition.Y == offset, "wrapped metadata redraw preserves vertical viewport");
-                tabs.AutoScrollPosition = Point.Empty; tabs.PerformLayout(); controls = TabControls(tabs); var source = controls[0]; var target = controls[5];
+                var trailingTab = UiField<Button>(form, "newTab");
+                Check(trailingTab.Top == controls.Last().Top && trailingTab.Left >= controls.Last().Right,
+                    "new-tab action stays on the last tab's row instead of wrapping alone");
+                UiAnyCall(tabs, "Reveal", host.Sessions.Last()); Check(controls.Last().Bottom <= tabs.ClientSize.Height && ((Point)UiAnyCall(tabs, "ScrollPosition")!).Y > 0, "last wrapped tab reveals within capped viewport");
+                int offset = ((Point)UiAnyCall(tabs, "ScrollPosition")!).Y; UiCall(form, "RefreshTabs"); Check(((Point)UiAnyCall(tabs, "ScrollPosition")!).Y == offset, "wrapped metadata redraw preserves vertical viewport");
+                UiAnyCall(tabs, "ResetScrollPosition"); tabs.PerformLayout(); controls = TabControls(tabs); var source = controls[0]; var target = controls[5];
                 UiCall(tabs, "BeginPointer", source, MouseButtons.Left, new Point(source.Left + 10, source.Top + 10)); UiCall(tabs, "MovePointer", source, new Point(target.Right - 2, target.Top + 15));
                 var move = UiCall(tabs, "EndPointer", source, MouseButtons.Left, new Point(target.Right - 2, target.Top + 15))!;
                 Check((int)move.GetType().GetProperty("Index")!.GetValue(move)! == 5 && host.Sessions[0].Identity.Handle == 1, "cross-row drag computes visual insertion without native mutations before drop dispatch");
                 UiCall(tabs, "PublishMove", move); Check(host.Sessions[5].Identity.Handle == 1, "cross-row drop reaches host reorder");
-                form.Width = 1100; form.PerformLayout(); tabs.PerformLayout(); Check(tabs.Height <= tabs.Padding.Vertical + 3 * 38 && !tabs.HorizontalScroll.Visible, "width change recalculates multirow layout without horizontal overflow");
-                UiAnyCall(tabs, "ConfigureLayout", false, 3); tabs.PerformLayout(); Check(!tabs.WrapContents && TabControls(tabs).All(c => c.Width >= 110 && c.Width <= 280) && tabs.HorizontalScroll.Visible, "disabling wrap retains adaptive widths and horizontal overflow");
+                form.Width = 1100; form.PerformLayout(); tabs.PerformLayout(); Check(tabs.Height <= tabs.Padding.Vertical + 3 * 38 && !(bool)UiAnyCall(tabs, "HasHorizontalScrollbar")!, "width change recalculates multirow layout without horizontal overflow");
+                UiAnyCall(tabs, "ConfigureLayout", false, 3); tabs.PerformLayout(); Check(!tabs.WrapContents && TabControls(tabs).All(c => c.Width >= 110 && c.Width <= 280) && (bool)UiAnyCall(tabs, "HasHorizontalScrollbar")!, "disabling wrap retains adaptive widths and horizontal overflow");
                 Check(!api.Events.Any(e => e.StartsWith("restore")), "multirow layout and reorder never detach Explorer");
             }
             var menuHost = new HostController(new FakeWindows(), new FakeStore()); Add(menuHost, 1);
@@ -351,15 +355,39 @@ namespace ExplorerTabs.Tests
                 using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
                 {
                     dialog.DrawToBitmap(bitmap, dialog.ClientRectangle);
-                    Check(bitmap.GetPixel(0, bitmap.Height / 2).ToArgb() == Color.FromArgb(196, 208, 226).ToArgb(),
-                        "settings dialog paints the shared border colour at its edge");
+                    int midX = bitmap.Width / 2, midY = bitmap.Height / 2;
+                    int border = Color.FromArgb(196, 208, 226).ToArgb(), white = Color.White.ToArgb();
+                    int sidebar = Color.FromArgb(247, 249, 252).ToArgb();
+                    Check(bitmap.GetPixel(0, midY).ToArgb() == border && bitmap.GetPixel(1, midY).ToArgb() == sidebar &&
+                        bitmap.GetPixel(bitmap.Width - 1, midY).ToArgb() == border && bitmap.GetPixel(bitmap.Width - 2, midY).ToArgb() == white &&
+                        bitmap.GetPixel(midX, 0).ToArgb() == border && bitmap.GetPixel(midX, 1).ToArgb() == white &&
+                        bitmap.GetPixel(midX, bitmap.Height - 1).ToArgb() == border && bitmap.GetPixel(midX, bitmap.Height - 2).ToArgb() == white,
+                        "settings dialog paints the shared border colour on every edge with a uniform 1px thickness");
                 }
+                var titleBar = dialog.Controls.Cast<Control>().Single(c => c.GetType().Name == "DialogTitleBar");
+                var content = dialog.Controls.Cast<Control>().Single(c => c != titleBar);
+                Check(dialog.Controls.Count == 2 && dialog.BackColor.ToArgb() == Color.FromArgb(196, 208, 226).ToArgb(),
+                    "dialog background itself forms the solid 1px border ring");
+                Check(titleBar.Region != null && !titleBar.Region.IsVisible(new PointF(1, 1)) &&
+                    content.Region != null && !content.Region.IsVisible(new PointF(1, content.Height - 1)),
+                    "rounded corners clip the square title bar and content so the border ring stays visible");
                 Check(!UiField<CheckBox>(dialog, "wrap").Checked && !UiField<NumericUpDown>(dialog, "maximumRows").Enabled, "settings expose wrap off by default with row limit disabled");
+                var settingsDirectory = UiField<TextBox>(dialog, "directory");
+                UiField<Button>(dialog, "thisPcPreset").PerformClick();
+                Check(settingsDirectory.Text == "此电脑", "This PC preset selects the virtual target");
+                UiField<Button>(dialog, "userPreset").PerformClick();
+                Check(settingsDirectory.Text == Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "user-directory preset selects the profile folder");
                 UiField<CheckBox>(dialog, "wrap").Checked = true; UiField<NumericUpDown>(dialog, "maximumRows").Value = 5;
                 var grid = UiField<DataGridView>(dialog, "bindings"); grid.Rows[1].Cells[1].Value = grid.Rows[0].Cells[1].Value; ((Button)dialog.AcceptButton!).PerformClick();
                 Check(dialog.DialogResult == DialogResult.None && UiField<Label>(dialog, "error").Text.Length > 0, "duplicate binding shows inline validation and keeps settings open");
-                grid.Rows[1].Cells[1].Value = ""; ((Button)dialog.AcceptButton!).PerformClick(); var result = (AppSettings)settingsType.GetProperty("Result")!.GetValue(dialog)!;
-                Check(dialog.DialogResult == DialogResult.OK && result.WrapTabs && result.MaximumTabRows == 5 && result.KeyBindings[1].Chord == "", "settings apply wrap/row count and explicitly disabled key");
+                grid.Rows[1].Cells[1].Value = "";
+                UiField<TextBox>(dialog, "globalHotkey").Text = "Ctrl+T"; ((Button)dialog.AcceptButton!).PerformClick();
+                Check(dialog.DialogResult == DialogResult.None && UiField<Label>(dialog, "error").Text.Contains("全局快捷键"),
+                    "global hotkey conflicting with a host shortcut stays inline");
+                UiField<TextBox>(dialog, "globalHotkey").Text = "Ctrl+Alt+E"; ((Button)dialog.AcceptButton!).PerformClick();
+                var result = (AppSettings)settingsType.GetProperty("Result")!.GetValue(dialog)!;
+                Check(dialog.DialogResult == DialogResult.OK && result.WrapTabs && result.MaximumTabRows == 5 && result.KeyBindings[1].Chord == "" &&
+                    result.GlobalHotkey == "Ctrl+Alt+E", "settings apply wrap/row count, disabled key and global hotkey");
             }
             var managerType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.LibraryManagerDialog", true)!;
             var sampleLibrary = new WorkspaceLibrary
@@ -460,7 +488,14 @@ namespace ExplorerTabs.Tests
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             var type = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.SettingsDialog", true)!;
             using (var form = (Form)Activator.CreateInstance(type, new AppSettings(), false, true)!)
-            { MakeHidden(form); var outer = form.Controls.OfType<TableLayoutPanel>().Single(); outer.Controls.OfType<TabControl>().Single().SelectedIndex = 1; RenderHiddenForm(form, output); }
+            {
+                MakeHidden(form);
+                var root = form.Controls.Cast<Control>().Single(c => c.GetType().Name != "DialogTitleBar");
+                var keys = root.Controls.OfType<Panel>().SelectMany(p => p.Controls.OfType<FlowLayoutPanel>())
+                    .SelectMany(p => p.Controls.OfType<Button>()).Single(b => b.Text == "快捷键");
+                keys.PerformClick();
+                RenderHiddenForm(form, output);
+            }
         }
         private sealed class WorkspaceStore : IWorkspaceLibraryStore
         { public WorkspaceLibrary Value = new WorkspaceLibrary(); public int Saves; public bool Fail; public WorkspaceLibrary? Read() => Value.Copy(); public void Save(WorkspaceLibrary library) { if (Fail) throw new IOException("fake disk error"); Saves++; Value = library.Copy(); } }

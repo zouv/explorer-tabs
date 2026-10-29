@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using ExplorerTabs.Core;
@@ -22,6 +23,18 @@ namespace ExplorerTabs.App
         private int maxRows = 3;
         private Func<WindowSession, string?>? directoryLookup;
         private const int MinimumTabWidth = 110, MaximumTabWidth = 280;
+        // Native WS_HSCROLL / WS_VSCROLL bars are deliberately disabled: they are tall, follow
+        // the system theme and can feed into each other (a transient horizontal bar shrinks the
+        // viewport height, which then keeps a vertical scrollbar stuck on). The strip lays its
+        // children out manually and paints its own thin overlay bars instead.
+        private int scrollX, scrollY;
+        private int contentWidth, contentHeight, viewportWidth, viewportHeight, rowHeight;
+        private int[] tabWidths = Array.Empty<int>();
+        private int[] tabRows = Array.Empty<int>();
+        private bool horizontalScrollVisible, verticalScrollVisible;
+        private bool scrollbarDragging, scrollbarHovered, draggingHorizontalBar;
+        private Point scrollbarDragStart;
+        private int scrollbarDragValue;
         public int PreferredChromeHeight { get; private set; } = 36;
         public event Action? PreferredChromeHeightChanged;
         private int Pixels(int value) => Math.Max(1, (int)Math.Round(value * DeviceDpi / 96F));
@@ -42,7 +55,7 @@ namespace ExplorerTabs.App
         {
             FlowDirection = FlowDirection.LeftToRight;
             WrapContents = false;
-            AutoScroll = true;
+            AutoScroll = false;
             DoubleBuffered = true;
             scroll.Tick += (_, __) => AutoScrollDrag();
         }
@@ -70,7 +83,6 @@ namespace ExplorerTabs.App
         {
             CancelPointer();
             this.directoryLookup = directoryLookup;
-            var offset = new Point(-AutoScrollPosition.X, -AutoScrollPosition.Y);
             SuspendLayout();
             try
             {
@@ -102,10 +114,10 @@ namespace ExplorerTabs.App
                     Controls.Add(button);
                 }
                 if (trailing != null && Controls.Contains(trailing)) Controls.SetChildIndex(trailing, Controls.Count - 1);
-                // UpdateRows sizes the viewport before publishing the new scroll extent.
-                // A transient horizontal scrollbar at the old height can leave vertical scrolling stuck on.
+                // UpdateRows measures every tab and positions it before the new scroll extent
+                // is applied, so a transient old extent can never resurrect a stale scrollbar.
             }
-            finally { ResumeLayout(false); UpdateRows(); AutoScrollPosition = offset; }
+            finally { ResumeLayout(false); UpdateRows(); }
         }
 
         /// <summary>Keeps a non-tab action (new tab) flowing directly after the last tab.</summary>
@@ -120,16 +132,27 @@ namespace ExplorerTabs.App
         {
             var button = Controls.OfType<TabButton>().FirstOrDefault(b => b.Session == session);
             if (button == null) return;
-            if (WrapContents) { ScrollControlIntoView(button); return; }
-            int offset = -AutoScrollPosition.X;
-            if (button.Left < Padding.Left) offset += button.Left - Padding.Left;
-            else if (button.Right > ClientSize.Width - Padding.Right)
-                offset += button.Right - (ClientSize.Width - Padding.Right);
-            AutoScrollPosition = new Point(Math.Max(0, offset), 0);
+            if (WrapContents)
+            {
+                int top = Padding.Top, bottom = top + Math.Max(1, viewportHeight);
+                if (button.Top < top) ApplyScroll(0, scrollY - (top - button.Top));
+                else if (button.Bottom > bottom) ApplyScroll(0, scrollY + button.Bottom - bottom);
+                return;
+            }
+            int left = Padding.Left, right = left + Math.Max(1, viewportWidth);
+            if (button.Left < left) ApplyScroll(scrollX - (left - button.Left), 0);
+            else if (button.Right > right) ApplyScroll(scrollX + button.Right - right, 0);
         }
 
         public void ConfigureLayout(bool wrap, int rows)
-        { CancelPointer(); WrapContents = wrap; maxRows = Math.Max(2, Math.Min(8, rows)); AutoScrollMinSize = Size.Empty; AutoScrollPosition = Point.Empty; UpdateRows(); PerformLayout(); }
+        {
+            CancelPointer();
+            maxRows = Math.Max(2, Math.Min(8, rows));
+            scrollX = scrollY = 0;
+            if (WrapContents != wrap) WrapContents = wrap;
+            UpdateRows();
+            PerformLayout();
+        }
         // Match the actual single-line painter, including folder glyph, close column and text padding.
         private int MeasureTabWidth(Control button)
         {
@@ -137,20 +160,38 @@ namespace ExplorerTabs.App
                 TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width;
             return Math.Max(Pixels(MinimumTabWidth), Math.Min(Pixels(MaximumTabWidth), text + Pixels(63)));
         }
-        private int AssignWrappedRows(int available)
+        private int MeasureWrapped(TabButton[] tabs, int available, int trailingExtent)
         {
-            int rows = Controls.Count == 0 ? 0 : 1, used = 0;
-            Control? previous = null;
-            foreach (Control c in Controls)
+            tabWidths = new int[tabs.Length];
+            tabRows = new int[tabs.Length];
+            int row = 0, used = 0, lastRowStart = 0;
+            for (int i = 0; i < tabs.Length; i++)
             {
-                if (c != trailing) c.Width = Math.Min(MeasureTabWidth(c), Math.Max(1, available - c.Margin.Horizontal));
-                SetFlowBreak(c, false);
-                int extent = c.Width + c.Margin.Horizontal;
-                if (used > 0 && used + extent > available)
-                { if (previous != null) SetFlowBreak(previous, true); rows++; used = 0; }
-                used += extent; previous = c;
+                var tab = tabs[i];
+                int width = Math.Min(MeasureTabWidth(tab), Math.Max(1, available - tab.Margin.Horizontal));
+                tabWidths[i] = width;
+                int extent = width + tab.Margin.Horizontal;
+                if (used > 0 && used + extent > available) { row++; used = 0; lastRowStart = i; }
+                tabRows[i] = row;
+                used += extent;
             }
-            return rows;
+            if (tabs.Length > 0 && used + trailingExtent > available)
+            {
+                // Keep the new-tab action hugging the last tab instead of wrapping alone. Prefer
+                // shaving the last tab a little; only move the tab down when it cannot shrink
+                // below the minimum width any further.
+                int last = tabs.Length - 1;
+                int overflow = used + trailingExtent - available;
+                if (tabWidths[last] - overflow >= Pixels(MinimumTabWidth)) tabWidths[last] -= overflow;
+                else
+                {
+                    if (lastRowStart < last) { row++; tabRows[last] = row; }
+                    int lastExtent = tabWidths[last] + tabs[last].Margin.Horizontal;
+                    if (lastExtent + trailingExtent > available)
+                        tabWidths[last] = Math.Max(1, available - tabs[last].Margin.Horizontal - trailingExtent);
+                }
+            }
+            return tabs.Length == 0 ? 0 : row + 1;
         }
         private void UpdateRows()
         {
@@ -160,27 +201,71 @@ namespace ExplorerTabs.App
             try
             {
                 SizeTrailing();
-                if (!WrapContents)
+                var tabs = Controls.OfType<TabButton>().ToArray();
+                int trailingExtent = trailing == null ? 0 : trailing.Width + trailing.Margin.Horizontal;
+                rowHeight = tabs.Length == 0 && trailing == null ? Pixels(32) :
+                    tabs.Select(t => t.Height + t.Margin.Vertical)
+                        .Concat(trailing == null ? Enumerable.Empty<int>() : new[] { trailing.Height + trailing.Margin.Vertical })
+                        .Max();
+                if (WrapContents)
                 {
-                    foreach (Control c in Controls)
-                    { if (c == trailing) continue; c.Width = MeasureTabWidth(c); SetFlowBreak(c, false); }
-                    int extent = Controls.Cast<Control>().Sum(c => c.Width + c.Margin.Horizontal) + Padding.Horizontal;
-                    SetStripHeight(Pixels(36) + (extent > Width ? SystemInformation.HorizontalScrollBarHeight : 0));
-                    AutoScrollMinSize = new Size(extent, 0);
+                    int available = Math.Max(1, ClientSize.Width - Padding.Horizontal);
+                    int rows = MeasureWrapped(tabs, available, trailingExtent);
+                    if (rows > maxRows)
+                        rows = MeasureWrapped(tabs, Math.Max(1, available - ScrollbarThickness), trailingExtent);
+                    verticalScrollVisible = rows > maxRows;
+                    horizontalScrollVisible = false;
+                    viewportWidth = Math.Max(1, available - (verticalScrollVisible ? ScrollbarThickness : 0));
+                    viewportHeight = rowHeight * Math.Min(maxRows, Math.Max(1, rows));
+                    contentWidth = 0;
+                    contentHeight = rowHeight * rows;
+                    scrollX = 0;
+                    scrollY = Math.Max(0, Math.Min(scrollY, Math.Max(0, contentHeight - viewportHeight)));
+                    SetStripHeight(Math.Max(Pixels(36), Padding.Vertical + viewportHeight));
                 }
                 else
                 {
-                    // ClientSize already excludes any currently visible scrollbar. Start with the
-                    // full viewport, then reserve a vertical scrollbar only when rows exceed the cap.
-                    int available = Math.Max(1, Width - Padding.Horizontal);
-                    int rows = AssignWrappedRows(available);
-                    if (rows > maxRows) rows = AssignWrappedRows(Math.Max(1, available - SystemInformation.VerticalScrollBarWidth));
-                    int rowHeight = Controls.Count == 0 ? Pixels(32) : Controls.Cast<Control>().Max(c => c.Height + c.Margin.Vertical);
-                    SetStripHeight(Math.Max(Pixels(36), Padding.Vertical + rowHeight * Math.Min(maxRows, rows)));
-                    AutoScrollMinSize = new Size(0, Padding.Vertical + rows * rowHeight);
+                    tabWidths = new int[tabs.Length];
+                    tabRows = new int[tabs.Length];
+                    int extent = 0;
+                    for (int i = 0; i < tabs.Length; i++)
+                    {
+                        tabWidths[i] = MeasureTabWidth(tabs[i]);
+                        extent += tabWidths[i] + tabs[i].Margin.Horizontal;
+                    }
+                    if (trailing != null) extent += trailingExtent;
+                    contentWidth = extent;
+                    viewportWidth = Math.Max(1, ClientSize.Width - Padding.Horizontal);
+                    viewportHeight = Math.Max(1, ClientSize.Height - Padding.Vertical);
+                    contentHeight = 0;
+                    horizontalScrollVisible = contentWidth > viewportWidth;
+                    verticalScrollVisible = false;
+                    scrollY = 0;
+                    scrollX = Math.Max(0, Math.Min(scrollX, Math.Max(0, contentWidth - viewportWidth)));
+                    SetStripHeight(Pixels(36));
                 }
+                PositionChildren(tabs);
             }
-            finally { ResumeLayout(true); adjusting = false; }
+            finally { ResumeLayout(true); adjusting = false; Invalidate(); }
+        }
+        private void PositionChildren(TabButton[] tabs)
+        {
+            int x = Padding.Left - scrollX, currentRow = -1;
+            for (int i = 0; i < tabs.Length; i++)
+            {
+                var tab = tabs[i];
+                int row = WrapContents ? tabRows[i] : 0;
+                if (row != currentRow) { x = Padding.Left - scrollX; currentRow = row; }
+                tab.Bounds = new Rectangle(x + tab.Margin.Left, Padding.Top + row * rowHeight - scrollY,
+                    tabWidths[i], tab.Height);
+                x += tabWidths[i] + tab.Margin.Horizontal;
+            }
+            if (trailing != null)
+            {
+                int row = WrapContents && tabs.Length > 0 ? tabRows[tabs.Length - 1] : 0;
+                trailing.Bounds = new Rectangle(x + trailing.Margin.Left, Padding.Top + row * rowHeight - scrollY,
+                    trailing.Width, trailing.Height);
+            }
         }
         private void SizeTrailing()
         {
@@ -188,10 +273,183 @@ namespace ExplorerTabs.App
             trailing.Size = new Size(Pixels(32), Pixels(32));
             trailing.Margin = new Padding(Pixels(4), 0, Pixels(2), 0);
         }
+
+        private int ScrollbarThickness => Pixels(4);
+        private Rectangle HorizontalBarBounds
+        {
+            get
+            {
+                // Keep the bar inside the spare pixels below the tab row so it never covers text.
+                int slack = Math.Max(2, ClientSize.Height - Padding.Vertical - Pixels(32));
+                int thickness = Math.Min(ScrollbarThickness, slack);
+                return new Rectangle(Padding.Left, ClientSize.Height - thickness,
+                    Math.Max(1, ClientSize.Width - Padding.Horizontal), thickness);
+            }
+        }
+        private Rectangle VerticalBarBounds
+        {
+            get
+            {
+                int thickness = ScrollbarThickness;
+                return new Rectangle(ClientSize.Width - thickness, Padding.Top, thickness,
+                    Math.Max(1, Math.Min(viewportHeight, ClientSize.Height - Padding.Vertical)));
+            }
+        }
+        private Rectangle HorizontalThumbBounds
+        {
+            get
+            {
+                var track = HorizontalBarBounds;
+                int size = Math.Min(track.Width, Math.Max(Pixels(20),
+                    (int)((long)viewportWidth * track.Width / Math.Max(1, contentWidth))));
+                int range = Math.Max(0, contentWidth - viewportWidth);
+                int x = range == 0 ? track.Left : track.Left + (int)((long)scrollX * (track.Width - size) / range);
+                return new Rectangle(x, track.Top, Math.Max(1, size), track.Height);
+            }
+        }
+        private Rectangle VerticalThumbBounds
+        {
+            get
+            {
+                var track = VerticalBarBounds;
+                int size = Math.Min(track.Height, Math.Max(Pixels(20),
+                    (int)((long)viewportHeight * track.Height / Math.Max(1, contentHeight))));
+                int range = Math.Max(0, contentHeight - viewportHeight);
+                int y = range == 0 ? track.Top : track.Top + (int)((long)scrollY * (track.Height - size) / range);
+                return new Rectangle(track.Left, y, track.Width, Math.Max(1, size));
+            }
+        }
+        private void ApplyScroll(int x, int y)
+        {
+            int maxX = Math.Max(0, contentWidth - viewportWidth);
+            int maxY = Math.Max(0, contentHeight - viewportHeight);
+            x = Math.Max(0, Math.Min(x, maxX)); y = Math.Max(0, Math.Min(y, maxY));
+            if (x == scrollX && y == scrollY) return;
+            scrollX = x; scrollY = y;
+            PositionChildren(Controls.OfType<TabButton>().ToArray());
+            Invalidate();
+        }
+        private bool ScrollByWheel(int delta)
+        {
+            int x = scrollX, y = scrollY;
+            if (WrapContents)
+            { if (verticalScrollVisible) ApplyScroll(0, y - Math.Sign(delta) * Math.Max(Pixels(16), rowHeight)); }
+            else if (horizontalScrollVisible) ApplyScroll(x - Math.Sign(delta) * Pixels(60), 0);
+            return x != scrollX || y != scrollY;
+        }
+        private bool HitScrollbar(Point point) =>
+            (horizontalScrollVisible && HorizontalBarBounds.Contains(point)) ||
+            (verticalScrollVisible && VerticalBarBounds.Contains(point));
+        private void BeginScrollbarDrag(Point point)
+        {
+            if (horizontalScrollVisible && HorizontalBarBounds.Contains(point))
+            {
+                scrollbarDragging = true; draggingHorizontalBar = true; Capture = true;
+                if (!HorizontalThumbBounds.Contains(point)) CenterHorizontalThumb(point.X);
+            }
+            else if (verticalScrollVisible && VerticalBarBounds.Contains(point))
+            {
+                scrollbarDragging = true; draggingHorizontalBar = false; Capture = true;
+                if (!VerticalThumbBounds.Contains(point)) CenterVerticalThumb(point.Y);
+            }
+            else return;
+            scrollbarDragStart = point;
+            scrollbarDragValue = draggingHorizontalBar ? scrollX : scrollY;
+            Invalidate();
+        }
+        private void CenterHorizontalThumb(int x)
+        {
+            var track = HorizontalBarBounds; var thumb = HorizontalThumbBounds;
+            int range = track.Width - thumb.Width, scrollRange = Math.Max(0, contentWidth - viewportWidth);
+            if (range <= 0 || scrollRange == 0) return;
+            int target = x - track.Left - thumb.Width / 2;
+            ApplyScroll((int)((long)target * scrollRange / range), 0);
+        }
+        private void CenterVerticalThumb(int y)
+        {
+            var track = VerticalBarBounds; var thumb = VerticalThumbBounds;
+            int range = track.Height - thumb.Height, scrollRange = Math.Max(0, contentHeight - viewportHeight);
+            if (range <= 0 || scrollRange == 0) return;
+            int target = y - track.Top - thumb.Height / 2;
+            ApplyScroll(0, (int)((long)target * scrollRange / range));
+        }
+        private void DragScrollbar(Point point)
+        {
+            if (draggingHorizontalBar)
+            {
+                var track = HorizontalBarBounds; var thumb = HorizontalThumbBounds;
+                int range = track.Width - thumb.Width, scrollRange = Math.Max(0, contentWidth - viewportWidth);
+                if (range <= 0 || scrollRange == 0) return;
+                ApplyScroll(scrollbarDragValue + (int)((long)(point.X - scrollbarDragStart.X) * scrollRange / range), 0);
+            }
+            else
+            {
+                var track = VerticalBarBounds; var thumb = VerticalThumbBounds;
+                int range = track.Height - thumb.Height, scrollRange = Math.Max(0, contentHeight - viewportHeight);
+                if (range <= 0 || scrollRange == 0) return;
+                ApplyScroll(0, scrollbarDragValue + (int)((long)(point.Y - scrollbarDragStart.Y) * scrollRange / range));
+            }
+        }
+        private void EndScrollbarDrag()
+        {
+            if (!scrollbarDragging) return;
+            scrollbarDragging = false; Capture = false; Invalidate();
+        }
+        internal bool HasHorizontalScrollbar() => horizontalScrollVisible;
+        internal bool HasVerticalScrollbar() => verticalScrollVisible;
+        internal Point ScrollPosition() => new Point(scrollX, scrollY);
+        internal void ResetScrollPosition()
+        {
+            if (scrollX == 0 && scrollY == 0) return;
+            scrollX = scrollY = 0;
+            PositionChildren(Controls.OfType<TabButton>().ToArray());
+            Invalidate();
+        }
         protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); if (!adjusting) UpdateRows(); }
         protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); if (!adjusting) UpdateRows(); }
         protected override void OnDpiChangedAfterParent(EventArgs e)
         { base.OnDpiChangedAfterParent(e); if (!adjusting) UpdateRows(); }
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            if (adjusting) return;
+            // Let FlowLayoutPanel do its own arrangement first, then apply the measured rows and
+            // the custom scroll offset so framework-triggered layouts cannot undo them.
+            base.OnLayout(e);
+            UpdateRows();
+        }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && HitScrollbar(e.Location)) { BeginScrollbarDrag(e.Location); return; }
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            if (scrollbarDragging) { DragScrollbar(e.Location); return; }
+            bool over = HitScrollbar(e.Location);
+            if (over != scrollbarHovered) { scrollbarHovered = over; Cursor = over ? Cursors.Hand : Cursors.Default; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            if (scrollbarDragging && e.Button == MouseButtons.Left) { EndScrollbarDrag(); return; }
+            base.OnMouseUp(e);
+        }
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            if (!scrollbarDragging && scrollbarHovered) { scrollbarHovered = false; Cursor = Cursors.Default; Invalidate(); }
+            base.OnMouseLeave(e);
+        }
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            if (!Capture && scrollbarDragging) { scrollbarDragging = false; Invalidate(); }
+            base.OnMouseCaptureChanged(e);
+        }
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            bool scrolled = ScrollByWheel(e.Delta);
+            base.OnMouseWheel(e);
+            if (scrolled && e is HandledMouseEventArgs handled) handled.Handled = true;
+        }
 
         internal void BeginPointer(TabButton button, MouseButtons buttons, Point point)
         {
@@ -244,7 +502,7 @@ namespace ExplorerTabs.App
         internal void PublishMove(TabMove move) => MoveRequested?.Invoke(move.Session, move.Index);
         internal static string TooltipFor(WindowSession session, string? directory) =>
             session.DisplayTitle + "\nExplorer：" + session.Title + "\n目录：" +
-            (string.IsNullOrWhiteSpace(directory) ? "未缓存" : directory);
+            (string.IsNullOrWhiteSpace(directory) ? "未缓存" : FolderTarget.Display(directory!));
         internal void RefreshTip(TabButton button) =>
             tips.SetToolTip(button, TooltipFor(button.Session, directoryLookup?.Invoke(button.Session)));
         private void Queue(Action action)
@@ -272,26 +530,56 @@ namespace ExplorerTabs.App
             pointer = PointToClient(MousePosition);
             int edge = Math.Max(16, SystemInformation.DragSize.Width * 2);
             if (pointer.Y < 0 || pointer.Y >= ClientSize.Height) return;
-            int direction = WrapContents ? (pointer.Y < edge ? -1 : pointer.Y >= ClientSize.Height - edge ? 1 : 0) : pointer.X < edge ? -1 : pointer.X >= ClientSize.Width - edge ? 1 : 0;
-            if (direction != 0)
+            if (WrapContents)
             {
-                if (WrapContents) direction = pointer.Y < edge ? -1 : pointer.Y >= ClientSize.Height - edge ? 1 : 0;
-                AutoScrollPosition = WrapContents ? new Point(0, Math.Max(0, -AutoScrollPosition.Y + direction * 24)) : new Point(Math.Max(0, -AutoScrollPosition.X + direction * 24), 0);
-                UpdateInsertion();
+                int direction = pointer.Y < edge ? -1 : pointer.Y >= ClientSize.Height - edge ? 1 : 0;
+                if (direction == 0) return;
+                ApplyScroll(0, scrollY + direction * Pixels(24));
             }
+            else
+            {
+                int direction = pointer.X < edge ? -1 : pointer.X >= ClientSize.Width - edge ? 1 : 0;
+                if (direction == 0) return;
+                ApplyScroll(scrollX + direction * Pixels(24), 0);
+            }
+            UpdateInsertion();
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            if (!dragging || source == null) return;
-            var remaining = Remaining();
-            int x = insertion < remaining.Length ? remaining[insertion].Left - 2 :
-                remaining.Length > 0 ? remaining[remaining.Length - 1].Right + 2 : source.Left - 2;
-            using (var pen = new Pen(Color.FromArgb(40, 110, 210), 3))
+            if (dragging && source != null)
+            {
+                var remaining = Remaining();
+                int x = insertion < remaining.Length ? remaining[insertion].Left - 2 :
+                    remaining.Length > 0 ? remaining[remaining.Length - 1].Right + 2 : source.Left - 2;
+                using (var pen = new Pen(Color.FromArgb(40, 110, 210), 3))
                 {
                     int y = WrapContents ? (insertion < remaining.Length ? remaining[insertion].Top : remaining.Length > 0 ? remaining.Last().Top : source.Top) : Padding.Top;
                     e.Graphics.DrawLine(pen, Math.Max(1, x), y, Math.Max(1, x), Math.Min(ClientSize.Height - 4, y + 32));
                 }
+            }
+            PaintScrollbars(e.Graphics);
+        }
+        private void PaintScrollbars(Graphics g)
+        {
+            if (horizontalScrollVisible) PaintScrollbar(g, HorizontalThumbBounds, scrollbarDragging && draggingHorizontalBar);
+            if (verticalScrollVisible) PaintScrollbar(g, VerticalThumbBounds, scrollbarDragging && !draggingHorizontalBar);
+        }
+        private void PaintScrollbar(Graphics g, Rectangle bounds, bool active)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0) return;
+            var state = g.Save();
+            try
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                Color color = active ? Color.FromArgb(215, 78, 96, 122) :
+                    scrollbarHovered ? Color.FromArgb(185, 96, 114, 141) : Color.FromArgb(135, 115, 131, 153);
+                using (var brush = new SolidBrush(color))
+                using (var path = HostTheme.Round(new RectangleF(bounds.X, bounds.Y, bounds.Width, bounds.Height),
+                    Math.Max(1F, Math.Min(bounds.Width, bounds.Height) / 2F)))
+                    g.FillPath(brush, path);
+            }
+            finally { g.Restore(state); }
         }
         protected override void Dispose(bool disposing)
         {
@@ -335,6 +623,12 @@ namespace ExplorerTabs.App
             { hovered = true; strip.RefreshTip(this); Invalidate(); base.OnMouseEnter(e); }
             protected override void OnMouseLeave(EventArgs e)
             { hovered = closeHovered = false; Invalidate(); base.OnMouseLeave(e); }
+            protected override void OnMouseWheel(MouseEventArgs e)
+            {
+                bool scrolled = strip.ScrollByWheel(e.Delta);
+                base.OnMouseWheel(e);
+                if (scrolled && e is HandledMouseEventArgs handled) handled.Handled = true;
+            }
             protected override void OnPaint(PaintEventArgs e)
             {
                 var g = e.Graphics; g.Clear(Parent?.BackColor ?? HostTheme.Chrome);

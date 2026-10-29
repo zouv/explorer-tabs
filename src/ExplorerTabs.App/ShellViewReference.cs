@@ -61,11 +61,51 @@ namespace ExplorerTabs.App
                 if (pidl == IntPtr.Zero) throw new InvalidOperationException("Shell 当前文件夹标识为空，请等待导航完成。");
                 var directory = new StringBuilder(32768);
                 if (!SHGetPathFromIDListEx(pidl, directory, (uint)directory.Capacity, 0))
-                    throw new InvalidOperationException("此标签是虚拟目录，不能复制为普通文件夹标签；未通过标题猜测。");
+                {
+                    if (IsThisPcPidl(pidl))
+                    {
+                        trace?.Invoke("Creation source directory provider=IPersistFolder2/ThisPC");
+                        return FolderTarget.ThisPc;
+                    }
+                    throw new InvalidOperationException("此标签是虚拟目录，不能复制为普通文件夹标签；仅支持“此电脑”，未通过标题猜测。");
+                }
                 trace?.Invoke("Creation source directory provider=IPersistFolder2/absolute-PIDL");
                 return FolderTarget.Normalize(directory.ToString());
             }
             finally { if (pidl != IntPtr.Zero) Marshal.FreeCoTaskMem(pidl); Release(folder); }
+        }
+        /// <summary>Compares the active view's current PIDL with a parsed shell target (used for This PC).</summary>
+        public bool CurrentFolderIs(string target)
+        {
+            if (!(view is IFolderViewNative folderView)) return false;
+            IPersistFolder2Native? folder = null;
+            IntPtr pidl = IntPtr.Zero, targetPidl = IntPtr.Zero;
+            try
+            {
+                Guid iid = typeof(IPersistFolder2Native).GUID;
+                if (folderView.GetFolder(ref iid, out folder) < 0 || folder == null) return false;
+                if (folder.GetCurFolder(out pidl) < 0 || pidl == IntPtr.Zero) return false;
+                if (SHParseDisplayName(target, IntPtr.Zero, out targetPidl, 0, out _) < 0 || targetPidl == IntPtr.Zero) return false;
+                return ILIsEqual(pidl, targetPidl);
+            }
+            catch (COMException error)
+            { trace?.Invoke($"Creation target compare failed; HRESULT=0x{error.HResult:X8}; {error.Message}"); return false; }
+            finally
+            {
+                if (pidl != IntPtr.Zero) Marshal.FreeCoTaskMem(pidl);
+                if (targetPidl != IntPtr.Zero) Marshal.FreeCoTaskMem(targetPidl);
+                Release(folder);
+            }
+        }
+        private static bool IsThisPcPidl(IntPtr pidl)
+        {
+            IntPtr target = IntPtr.Zero;
+            try
+            {
+                return SHParseDisplayName(FolderTarget.ThisPc, IntPtr.Zero, out target, 0, out _) >= 0 &&
+                    target != IntPtr.Zero && ILIsEqual(pidl, target);
+            }
+            finally { if (target != IntPtr.Zero) Marshal.FreeCoTaskMem(target); }
         }
         public void Dispose() { Release(view); Release(browser); }
         private static void Release(object? value) { if (value != null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
@@ -116,5 +156,10 @@ namespace ExplorerTabs.App
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SHGetPathFromIDListEx(IntPtr pidl,
             StringBuilder path, uint length, uint flags);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+        private static extern int SHParseDisplayName([MarshalAs(UnmanagedType.LPWStr)] string name,
+            IntPtr bindingContext, out IntPtr pidl, uint attributesIn, out uint attributesOut);
+        [DllImport("shell32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)] private static extern bool ILIsEqual(IntPtr pidl1, IntPtr pidl2);
     }
 }

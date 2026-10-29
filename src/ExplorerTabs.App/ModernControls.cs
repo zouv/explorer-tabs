@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace ExplorerTabs.App
 {
-    internal enum UiGlyph { NewTab, AddWindow, DetachWindow, Search, Favorites, Session, Settings, Cancel, Minimize, Maximize, Restore, Close, Diagnostics, App }
+    internal enum UiGlyph { NewTab, AddWindow, DetachWindow, Search, Favorites, Session, Settings, Cancel, Minimize, Maximize, Restore, Close, Diagnostics, App, TabBar, Keyboard, Folder }
     internal static class HostTheme
     {
         internal static readonly Color Canvas = Color.FromArgb(247, 249, 252);
@@ -13,6 +13,10 @@ namespace ExplorerTabs.App
         internal static readonly Color Text = Color.FromArgb(43, 56, 76);
         internal static readonly Color Accent = Color.FromArgb(42, 103, 211);
         internal static readonly Color DialogBorder = Color.FromArgb(196, 208, 226);
+        internal static readonly Color MutedText = Color.FromArgb(91, 104, 123);
+        internal static readonly Color FieldBorder = Color.FromArgb(207, 218, 234);
+        internal static readonly Color SidebarHover = Color.FromArgb(237, 242, 249);
+        internal static readonly Color NoteBackground = Color.FromArgb(244, 248, 253);
         internal static void StyleMenu(ContextMenuStrip menu)
         { menu.Renderer = new ToolStripProfessionalRenderer(new HostMenuColors()); menu.ShowImageMargin = false; menu.BackColor = Color.FromArgb(253, 254, 255); menu.ForeColor = Text; }
         internal static GraphicsPath Round(RectangleF r, float radius)
@@ -58,6 +62,16 @@ namespace ExplorerTabs.App
                         g.DrawLines(pen, new[] { new Point(15, 3), new Point(21, 3), new Point(21, 9) }); break;
                     case UiGlyph.Settings:
                         DrawGear(g, brush); break;
+                    case UiGlyph.TabBar:
+                        g.DrawRectangle(pen, 3, 6, 18, 13);
+                        g.DrawLine(pen, 3, 10, 21, 10);
+                        g.DrawLine(pen, 9, 10, 9, 19); g.DrawLine(pen, 15, 10, 15, 19); break;
+                    case UiGlyph.Keyboard:
+                        g.DrawRectangle(pen, 3, 7, 18, 11);
+                        g.DrawLine(pen, 6, 11, 8, 11); g.DrawLine(pen, 10, 11, 12, 11); g.DrawLine(pen, 14, 11, 16, 11); g.DrawLine(pen, 18, 11, 19, 11);
+                        g.DrawLine(pen, 7, 14, 17, 14); break;
+                    case UiGlyph.Folder:
+                        g.DrawLines(pen, new[] { new Point(3, 7), new Point(3, 18), new Point(21, 18), new Point(21, 8), new Point(12, 8), new Point(10, 6), new Point(3, 6), new Point(3, 7) }); break;
                     case UiGlyph.Diagnostics: g.DrawLines(pen, new[] { new Point(3, 12), new Point(7, 12), new Point(10, 5), new Point(14, 19), new Point(17, 12), new Point(21, 12) }); break;
                     case UiGlyph.App:
                         using (var bg = new SolidBrush(Accent)) using (var r = Round(new RectangleF(1, 1, 22, 22), 5)) g.FillPath(bg, r);
@@ -185,25 +199,13 @@ namespace ExplorerTabs.App
         public override Color SeparatorDark => Color.FromArgb(225, 231, 240);
         public override Color SeparatorLight => Color.Transparent;
     }
-    /// <summary>Borderless dialog base: own rounded chrome plus the native drop shadow.</summary>
+    /// <summary>Borderless dialog base: rounded region and a solid 1px border ring.</summary>
     internal class ShellDialog : Form
     {
         protected ShellDialog()
         {
             DoubleBuffered = true;
             SetStyle(ControlStyles.ResizeRedraw, true);
-        }
-        protected override CreateParams CreateParams
-        {
-            get { var cp = base.CreateParams; cp.ClassStyle |= 0x00020000; return cp; } // CS_DROPSHADOW
-        }
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            // DialogStyle.Apply reserves a 1px padding ring; draw the border there so it
-            // stays visible even though the title bar and content fill the client area.
-            if (Padding.Left < 1 || Padding.Top < 1) return;
-            DialogStyle.DrawBorder(e.Graphics, ClientSize, DeviceDpi);
         }
     }
     internal sealed class DialogTitleBar : Panel
@@ -236,41 +238,191 @@ namespace ExplorerTabs.App
             ReleaseCapture(); SendMessage(form.Handle, 0xA1, new IntPtr(2), IntPtr.Zero); // WM_NCLBUTTONDOWN / HTCAPTION
         }
     }
+    /// <summary>Left navigation item: flat, icon + label, accent selection bar.</summary>
+    internal sealed class SidebarButton : Button
+    {
+        private bool hovered, selected;
+        public UiGlyph Glyph { get; }
+        public bool Selected { get => selected; set { if (selected != value) { selected = value; Invalidate(); } } }
+        public SidebarButton(UiGlyph glyph, string text)
+        {
+            Glyph = glyph; Text = text; FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; AutoSize = false;
+            Size = new Size(170, 42); Margin = new Padding(0, 2, 0, 2); TabStop = true; Cursor = Cursors.Hand;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+        }
+        protected override void OnMouseEnter(EventArgs e) { hovered = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hovered = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics; g.Clear(Parent?.BackColor ?? HostTheme.Canvas);
+            int radius = Math.Max(4, (int)Math.Round(8 * DeviceDpi / 96F));
+            Color fill = selected ? Color.White : hovered ? HostTheme.SidebarHover : Color.Transparent;
+            if (fill != Color.Transparent)
+                using (var brush = new SolidBrush(fill))
+                using (var path = HostTheme.Round(new RectangleF(1, 1, Width - 2, Height - 2), radius)) g.FillPath(brush, path);
+            if (selected)
+                using (var brush = new SolidBrush(HostTheme.Accent))
+                using (var path = HostTheme.Round(new RectangleF(1, 10, 3, Height - 20), 1.5F)) g.FillPath(brush, path);
+            int icon = Math.Max(16, (int)Math.Round(18 * DeviceDpi / 96F));
+            int left = Math.Max(12, (int)Math.Round(16 * DeviceDpi / 96F));
+            var color = selected ? HostTheme.Accent : HostTheme.Text;
+            HostTheme.Glyph(g, Glyph, new Rectangle(left, (Height - icon) / 2, icon, icon), color);
+            int textLeft = left + icon + Math.Max(8, (int)Math.Round(10 * DeviceDpi / 96F));
+            TextRenderer.DrawText(g, Text, Font, new Rectangle(textLeft, 0, Width - textLeft - 8, Height), color,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(ClientRectangle, -4, -4));
+        }
+    }
+    /// <summary>Owner-drawn checkbox used by the settings surface (one consistent 18px box).</summary>
+    internal sealed class ThemedCheckBox : CheckBox
+    {
+        private bool hovered;
+        public ThemedCheckBox() : this("") { }
+        public ThemedCheckBox(string text)
+        {
+            Text = text; AutoSize = false; Height = 30; FlatStyle = FlatStyle.Flat; Cursor = Cursors.Hand;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+        }
+        protected override void OnMouseEnter(EventArgs e) { hovered = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hovered = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnCheckedChanged(EventArgs e) { Invalidate(); base.OnCheckedChanged(e); }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics; g.Clear(Parent?.BackColor ?? Color.White);
+            int box = Math.Max(16, (int)Math.Round(18 * DeviceDpi / 96F));
+            int x = 1, y = (Height - box) / 2;
+            var border = !Enabled ? Color.FromArgb(220, 226, 235) : Checked ? HostTheme.Accent : hovered ? Color.FromArgb(160, 178, 203) : HostTheme.FieldBorder;
+            using (var brush = new SolidBrush(Checked ? HostTheme.Accent : Color.White))
+            using (var path = HostTheme.Round(new RectangleF(x, y, box, box), 4))
+            using (var pen = new Pen(border, 1F)) { g.FillPath(brush, path); g.DrawPath(pen, path); }
+            if (Checked)
+                using (var pen = new Pen(Color.White, Math.Max(1.6F, box / 10F)) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
+                    g.DrawLines(pen, new[] { new PointF(x + box * 0.24F, y + box * 0.52F), new PointF(x + box * 0.44F, y + box * 0.72F), new PointF(x + box * 0.78F, y + box * 0.30F) });
+            int textLeft = x + box + Math.Max(8, (int)Math.Round(9 * DeviceDpi / 96F));
+            TextRenderer.DrawText(g, Text, Font, new Rectangle(textLeft, 0, Math.Max(1, Width - textLeft - 2), Height),
+                Enabled ? HostTheme.Text : Color.FromArgb(150, 160, 175),
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(g, new Rectangle(textLeft, 4, Math.Max(1, Width - textLeft - 4), Height - 8));
+        }
+    }
+    /// <summary>1px rounded field frame; hosts a borderless combo/text/stepper with consistent vertical centring.</summary>
+    internal sealed class FieldHost : Panel
+    {
+        private readonly Control content;
+        public FieldHost(Control content)
+        {
+            this.content = content;
+            BackColor = Color.White;
+            Height = Math.Max(30, (int)Math.Round(30 * DeviceDpi / 96F));
+            Padding = new Padding(8, 0, 6, 0);
+            content.BackColor = Color.White;
+            content.Enter += (_, __) => Invalidate();
+            content.Leave += (_, __) => Invalidate();
+            Controls.Add(content);
+        }
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            base.OnLayout(e);
+            int preferred = Math.Max(18, content.PreferredSize.Height);
+            int height = Math.Min(Math.Max(18, Height - 2), preferred);
+            content.Bounds = new Rectangle(Padding.Left, Math.Max(1, (Height - height) / 2),
+                Math.Max(1, Width - Padding.Horizontal), height);
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var color = content.Focused ? HostTheme.Accent : HostTheme.FieldBorder;
+            using (var path = HostTheme.Round(new RectangleF(0.5F, 0.5F, Width - 1F, Height - 1F), 6F))
+            using (var pen = new Pen(color, 1F))
+            {
+                var smoothing = e.Graphics.SmoothingMode; var offset = e.Graphics.PixelOffsetMode;
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias; e.Graphics.PixelOffsetMode = PixelOffsetMode.None;
+                e.Graphics.DrawPath(pen, path);
+                e.Graphics.PixelOffsetMode = offset; e.Graphics.SmoothingMode = smoothing;
+            }
+        }
+    }
+    /// <summary>Preset chip with a selected state (used for new-tab directories).</summary>
+    internal sealed class PresetButton : Button
+    {
+        private bool hovered, selected;
+        public bool Selected { get => selected; set { if (selected != value) { selected = value; Invalidate(); } } }
+        public PresetButton(string text)
+        {
+            Text = text; AutoSize = false; Size = new Size(96, 30); Margin = new Padding(0, 0, 8, 0);
+            FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; Cursor = Cursors.Hand;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+        }
+        protected override void OnMouseEnter(EventArgs e) { hovered = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hovered = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics; g.Clear(Parent?.BackColor ?? Color.White);
+            Color fill = selected ? Color.FromArgb(232, 240, 253) : hovered ? HostTheme.SidebarHover : Color.White;
+            Color border = selected ? HostTheme.Accent : HostTheme.FieldBorder;
+            using (var brush = new SolidBrush(fill))
+            using (var path = HostTheme.Round(new RectangleF(0.5F, 0.5F, Width - 1F, Height - 1F), 6F))
+            using (var pen = new Pen(border, 1F)) { g.FillPath(brush, path); g.DrawPath(pen, path); }
+            TextRenderer.DrawText(g, Text, Font, ClientRectangle, selected ? HostTheme.Accent : HostTheme.Text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(ClientRectangle, -3, -3));
+        }
+    }
     internal static class DialogStyle
     {
         private const int CornerRadius = 12;
-        [System.Runtime.InteropServices.DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
-        [System.Runtime.InteropServices.DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr handle);
-        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, bool redraw);
+        private static float Radius(int dpi) => Math.Max(4F, (float)Math.Round(CornerRadius * dpi / 96F));
+        private static GraphicsPath RoundedPath(Size size, float radius, int inset = 0) =>
+            HostTheme.Round(new RectangleF(inset, inset, Math.Max(1, size.Width - inset * 2F), Math.Max(1, size.Height - inset * 2F)),
+                Math.Max(1F, radius - inset));
 
-        /// <summary>Replaces the native thick dialog frame with borderless rounded chrome and no inherited icon.</summary>
+        /// <summary>Replaces the native thick dialog frame with a borderless rounded chrome and solid 1px ring.</summary>
         public static void Apply(Form form)
         {
             form.FormBorderStyle = FormBorderStyle.None;
             form.ShowIcon = false;
             form.Icon = null;
-            // Keep a 1px ring outside the docked title bar/content for the custom border.
+            // The form background itself is the border ring. The docked title bar/content are
+            // clipped to the inner rounded path, so the ring is exactly 1px everywhere and is
+            // never covered by square child corners (the old stroked border failed at arcs).
             form.Padding = new Padding(1);
+            form.BackColor = HostTheme.DialogBorder;
             form.Controls.Add(new DialogTitleBar(form));
-            form.HandleCreated += (_, __) => Round(form);
-            form.Shown += (_, __) => Round(form);
-            form.SizeChanged += (_, __) => { if (form.IsHandleCreated) Round(form); };
-        }
-        internal static void DrawBorder(Graphics graphics, Size size, int dpi)
-        {
-            if (size.Width < 3 || size.Height < 3) return;
-            float radius = Math.Max(4, (float)Math.Round(CornerRadius * dpi / 96F));
-            using (var path = HostTheme.Round(new RectangleF(0.5F, 0.5F, size.Width - 1F, size.Height - 1F), radius))
-            using (var pen = new Pen(HostTheme.DialogBorder))
-                graphics.DrawPath(pen, path);
+            form.HandleCreated += (_, __) => { Round(form); ShapeChildren(form); };
+            form.Shown += (_, __) => { Round(form); ShapeChildren(form); };
+            form.SizeChanged += (_, __) => { if (!form.IsHandleCreated) return; Round(form); ShapeChildren(form); };
+            form.Layout += (_, __) => { if (form.IsHandleCreated) ShapeChildren(form); };
+            form.ControlAdded += (_, __) => { if (form.IsHandleCreated) ShapeChildren(form); };
+            ShapeChildren(form);
         }
         private static void Round(Form form)
         {
-            if (!form.IsHandleCreated || form.WindowState == FormWindowState.Minimized || form.Width <= 0 || form.Height <= 0) return;
-            int radius = Math.Max(4, (int)Math.Round(CornerRadius * form.DeviceDpi / 96F));
-            IntPtr region = CreateRoundRectRgn(0, 0, form.Width + 1, form.Height + 1, radius * 2, radius * 2);
-            if (region == IntPtr.Zero) return;
-            if (SetWindowRgn(form.Handle, region, true) == 0) DeleteObject(region);
+            if (!form.IsHandleCreated || form.WindowState == FormWindowState.Minimized ||
+                form.ClientSize.Width < 3 || form.ClientSize.Height < 3) return;
+            using (var path = RoundedPath(form.ClientSize, Radius(form.DeviceDpi)))
+                form.Region = new Region(path);
+        }
+        private static void ShapeChildren(Form form)
+        {
+            // The title bar and content are square, docked controls; their corners would cover
+            // the rounded border exactly where it turns. Clip every direct child to the same
+            // inner edge as the window region (shifted into the child's coordinates). Corners
+            // outside a child's rectangle are clipped by its own window bounds.
+            int w = form.ClientSize.Width, h = form.ClientSize.Height;
+            if (w < 3 || h < 3) return;
+            using (var inner = RoundedPath(form.ClientSize, Math.Max(1F, Radius(form.DeviceDpi) - 1F), 1))
+            {
+                foreach (Control child in form.Controls)
+                {
+                    using (var path = (GraphicsPath)inner.Clone())
+                    using (var shift = new Matrix())
+                    {
+                        shift.Translate(-child.Left, -child.Top);
+                        path.Transform(shift);
+                        child.Region = new Region(path);
+                    }
+                }
+            }
         }
     }
     internal sealed class ToolbarDivider : Control

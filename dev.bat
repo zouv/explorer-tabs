@@ -11,8 +11,9 @@ rem
 rem  说明: 实际构建逻辑仍在 scripts\build.ps1；参数会原样透传
 rem        （例如 dev.bat -TreatWarningsAsErrors）。
 rem
-rem  安全: 本脚本不结束、不接管任何已有 Explorer / 宿主。
-rem        检测到 ExplorerTabs 正在运行时直接退出，请先手动退出旧宿主。
+rem  安全: 检测到 ExplorerTabs 正在运行时先列出进程并询问；只有输入 Y
+rem        才关闭（先尝试正常关闭，12 秒超时后强制结束）并继续构建 /
+rem        启动，其它输入取消。不会自动关闭任何宿主或 Explorer。
 rem ============================================================
 
 pushd "%~dp0"
@@ -20,19 +21,12 @@ pushd "%~dp0"
 where powershell >nul 2>&1
 if errorlevel 1 goto :NoPowerShell
 
-tasklist /FI "IMAGENAME eq ExplorerTabs.exe" 2>nul | findstr /I /C:"ExplorerTabs.exe" >nul
-if not errorlevel 1 (
-    echo [ERROR] 检测到 ExplorerTabs 正在运行。
-    echo         本脚本不会结束宿主或 Explorer；请先手动退出旧宿主再运行 dev.bat。
-    popd
-    exit /b 1
-)
-
 echo ============================================================
 echo  Dev    ^|  build.ps1 + 启动开发快照
 echo ============================================================
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\build.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\build.ps1" -CloseRunningHost %*
+if errorlevel 2 goto :Cancelled
 if errorlevel 1 goto :BuildFailed
 
 set "EXE=%~dp0.runtime\build\ExplorerTabs-dev\ExplorerTabs.exe"
@@ -49,6 +43,12 @@ echo        这是真实交互宿主；请仅在你自己的桌面上使用。
 start "" "%EXE%"
 popd
 exit /b 0
+
+:Cancelled
+echo.
+echo [INFO] 已取消启动：未关闭任何进程，也未启动应用。
+popd
+exit /b 2
 
 :BuildFailed
 echo.

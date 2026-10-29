@@ -97,6 +97,12 @@ namespace ExplorerTabs.App
         }
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == 0x0312 && m.WParam.ToInt64() == GlobalHotkeyRegistration.HotkeyId)
+            {
+                // Never toggle while a modal dialog (including hotkey capture) or exit flow is active.
+                if (!closing && !exitPreparing && modalDepth == 0) QueueMenuAction(ToggleHostVisibility);
+                return;
+            }
             if (m.Msg == 0x0211 && nativeMenuScope == null && !disposingUi) nativeMenuScope = EnterModal();
             if (m.Msg == 0x0212) { var scope = nativeMenuScope; nativeMenuScope = null; scope?.Dispose(); }
             if (m.Msg == 0x0083) // WM_NCCALCSIZE
@@ -160,6 +166,7 @@ namespace ExplorerTabs.App
         {
             base.OnHandleCreated(e);
             SyncTopResizeBand();
+            if (hotkeyRegistrationActive) ApplyGlobalHotkey(settings.GlobalHotkey);
         }
         [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
         [StructLayout(LayoutKind.Sequential)] private struct NcCalcSizeParams { public NativeRect Rc0, Rc1, Rc2; public IntPtr WindowPos; }

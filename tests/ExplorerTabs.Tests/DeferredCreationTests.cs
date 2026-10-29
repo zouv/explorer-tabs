@@ -110,6 +110,7 @@ namespace ExplorerTabs.Tests
             public IReadOnlyCollection<long> CaptureExistingHandles() => Inner.CaptureExistingHandles();
             public string ReadDirectory(WindowIdentity identity) => Inner.ReadDirectory(identity);
             public bool DirectoryExists(string directory) => Inner.DirectoryExists(directory);
+            public bool IsAt(ICreatedExplorerReference browser, string target) => Inner.IsAt(browser, target);
             public ICreatedExplorerReference Create() { Inner.Create(); return Browser; }
             public WindowIdentity Inspect(long handle) => Inner.Inspect(handle);
             public bool Matches(WindowIdentity identity) => Inner.Matches(identity);

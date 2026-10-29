@@ -128,8 +128,8 @@ namespace ExplorerTabs.App
                 favorites.Items.Clear();
                 foreach (var favorite in library.Favorites)
                 {
-                    var item = new ListViewItem(favorite.Name) { Tag = favorite, ToolTipText = favorite.Directory };
-                    item.SubItems.Add(favorite.Directory);
+                    var item = new ListViewItem(favorite.Name) { Tag = favorite, ToolTipText = FolderTarget.Display(favorite.Directory) };
+                    item.SubItems.Add(FolderTarget.Display(favorite.Directory));
                     favorites.Items.Add(item);
                     if (favorite.Id == selectId) item.Selected = true;
                 }

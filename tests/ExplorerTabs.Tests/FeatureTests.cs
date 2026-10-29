@@ -21,11 +21,18 @@ namespace ExplorerTabs.Tests
             Check(FolderTarget.Normalize(@"\\server\share\folder\") == @"\\server\share\folder", "UNC folder retains server and share");
             Check(FolderTarget.FromLocationUrl("file:///C:/%E8%B5%84%E6%96%99/a%20b%23x") == @"C:\资料\a b#x", "file URL decodes Unicode spaces and literal hash");
             Check(FolderTarget.FromLocationUrl("file://server/share/path") == @"\\server\share\path", "Shell UNC file URL converts to folder");
-            foreach (string invalid in new[] { "", " ", "relative", "C:relative", @"\rooted", "https://example.com", "shell:MyComputerFolder",
+            Check(FolderTarget.Normalize("shell:MyComputerFolder") == FolderTarget.ThisPc &&
+                FolderTarget.Normalize("::{20D04FE0-3AEA-1069-A2D8-08002B30309D}") == FolderTarget.ThisPc &&
+                FolderTarget.Display(FolderTarget.ThisPc) == "此电脑" &&
+                FolderTarget.Same(FolderTarget.ThisPc, "shell:mycomputerfolder"),
+                "This PC is the only accepted virtual target and compares case-insensitively");
+            foreach (string invalid in new[] { "", " ", "relative", "C:relative", @"\rooted", "https://example.com", "shell:RecycleBinFolder",
                 "explorer.exe /n", @"C:\a"" /x", "C:\\a\nb", "C:\\a\tb", "C:\\a\0b", @"C:\a:stream", @"C:\a?b", @"C:\a*b",
                 @"C:\a|b", @"C:\a<b", @"\\?\C:\folder", @"\\.\C:\folder", @"\\server", @"\\server\", @"\\server\..\x", @"\\\share" })
                 Check(Throws(() => FolderTarget.Normalize(invalid)) is ArgumentException, "unsafe/nonabsolute folder rejected: " + invalid.Replace('\0', '_'));
-            foreach (string url in new[] { "", "shell:MyComputerFolder", "search-ms:query=test", "https://example.com/", "file:///C:/Test?q=1", "file:///C:/Test#anchor" })
+            Check(FolderTarget.FromLocationUrl("shell:MyComputerFolder") == FolderTarget.ThisPc,
+                "This PC shell URL maps to the canonical token");
+            foreach (string url in new[] { "", "shell:RecycleBinFolder", "search-ms:query=test", "https://example.com/", "file:///C:/Test?q=1", "file:///C:/Test#anchor" })
                 Check(Throws(() => FolderTarget.FromLocationUrl(url)) is InvalidOperationException, "virtual or ambiguous Shell URL rejected: " + url);
 
             var policy = new NewTabShortcutPolicy();
@@ -58,6 +65,16 @@ namespace ExplorerTabs.Tests
                 policy.Handle(0x54, false, false, false, false, false, false).Suppress, "injected keyup cannot consume physical T pairing");
             Check(!policy.Handle(9, true, false, true, false, false, true).Suppress &&
                 !policy.Handle(0x57, true, false, true, false, false, true).Create, "new-tab policy leaves Tab and Ctrl+W alone");
+            Check(GlobalHotkeyDefinition.Normalize(" ctrl + alt + e ") == "Ctrl+Alt+E" &&
+                GlobalHotkeyDefinition.Normalize("Shift+Ctrl+F5") == "Ctrl+Shift+F5" &&
+                GlobalHotkeyDefinition.Normalize("Alt+1") == "Alt+1" &&
+                GlobalHotkeyDefinition.Format(GlobalHotkeyDefinition.Control | GlobalHotkeyDefinition.Alt, 'E') == "Ctrl+Alt+E",
+                "global hotkey parsing formats modifiers and keys canonically");
+            foreach (string invalid in new[] { "E", "Ctrl+", "Ctrl+Alt", "Win+E", "Ctrl+Win+E", "Ctrl+Alt+F13", "Ctrl+Alt+Arrow", "Alt+F4" })
+                Check(!GlobalHotkeyDefinition.IsValid(invalid), "invalid global hotkey rejected: " + invalid);
+            Check(GlobalHotkeyDefinition.Conflicts("Ctrl+T", HostShortcutCatalog.Defaults()) &&
+                !GlobalHotkeyDefinition.Conflicts("Ctrl+Alt+E", HostShortcutCatalog.Defaults()),
+                "global hotkey duplicates host shortcuts are detected");
             SettingsUnitTests(); CreationWorkflowTests(); CreationServiceTests();
         }
 
@@ -78,10 +95,17 @@ namespace ExplorerTabs.Tests
                 Check(store.Read()!.NewTabDirectory == @"C:\second" && Directory.GetFiles(directory).Length == 1, "atomic replacement saves updated settings without temp leftovers");
                 var copy = original.Copy(); copy.NewTabDirectory = @"C:\third";
                 Check(original.NewTabDirectory == @"C:\second", "settings copies do not mutate originals");
+                original.GlobalHotkey = " Ctrl+Alt+E "; store.Save(original);
+                Check(store.Read()!.GlobalHotkey == " Ctrl+Alt+E ", "global hotkey roundtrips in settings");
+                Check(Throws(() => store.Save(new AppSettings { GlobalHotkey = "Ctrl+T" })) is InvalidDataException &&
+                    Throws(() => store.Save(new AppSettings { GlobalHotkey = "E" })) is InvalidDataException,
+                    "global hotkey conflicts and invalid formats are rejected");
+                original.GlobalHotkey = null;
                 File.WriteAllText(file, "{}"); loaded = store.Read()!;
                 Check(loaded.Version == 1 && loaded.Mode == HostingMode.Embedded && loaded.ShortcutsEnabled &&
-                    loaded.NewTabDirectory == Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "partial legacy settings receive field defaults");
-                foreach (string content in new[] { "null", "broken json", "{\"Version\":2}", "{\"Mode\":99}", "{\"NewTabDirectory\":\"shell:MyComputerFolder\"}", new string('x', 32769) })
+                    loaded.NewTabDirectory == Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) && loaded.GlobalHotkey == null,
+                    "partial legacy settings receive field defaults");
+                foreach (string content in new[] { "null", "broken json", "{\"Version\":2}", "{\"Mode\":99}", "{\"NewTabDirectory\":\"shell:RecycleBinFolder\"}", new string('x', 32769) })
                 {
                     File.WriteAllText(file, content);
                     Check(Throws(() => store.Read()) != null && File.ReadAllText(file) == content, "bad/oversize/future settings are rejected and preserved");
@@ -130,8 +154,13 @@ namespace ExplorerTabs.Tests
             }
             backend = new CreationBackend(); backend.Exists = false;
             Check(Throws(() => RunCreate(backend)) is InvalidOperationException && !backend.Events.Contains("create"), "inaccessible directory fails without creating any browser");
-            backend = new CreationBackend(); backend.SourceDirectory = "shell:MyComputerFolder";
-            Check(Throws(() => RunCreate(backend, source: Identity(1))) is ArgumentException && !backend.Events.Contains("create"), "virtual source fails before new-window activation");
+            backend = new CreationBackend(); backend.SourceDirectory = "shell:RecycleBinFolder";
+            Check(Throws(() => RunCreate(backend, source: Identity(1))) is ArgumentException && !backend.Events.Contains("create"), "unsupported virtual source fails before new-window activation");
+            backend = new CreationBackend(); backend.SourceDirectory = FolderTarget.ThisPc;
+            result = RunCreate(backend, source: Identity(1));
+            Check(result.Directory == FolderTarget.ThisPc && backend.Browser.Navigated == FolderTarget.ThisPc &&
+                backend.Events.Contains("isat:" + FolderTarget.ThisPc) && !backend.Events.Contains("exists"),
+                "This PC source skips the filesystem existence check and confirms the PIDL target");
             backend = new CreationBackend(); backend.ReadFailure = true;
             Check(Throws(() => RunCreate(backend, source: Identity(1))) is InvalidOperationException && !backend.Events.Contains("create"), "missing source browser does not fall back to a guessed folder");
             backend = new CreationBackend(); backend.Inspected = Identity(10); backend.Inspected.ClassName = "NotExplorer";
@@ -241,7 +270,7 @@ namespace ExplorerTabs.Tests
             public readonly CreationBrowser Browser;
             public string SourceDirectory = @"C:\Source";
             public WindowIdentity? ReadSource, Inspected;
-            public bool Exists = true, ValidIdentity = true, ReadFailure;
+            public bool Exists = true, ValidIdentity = true, ReadFailure, IsAtResult = true;
             public Action? OnCreate, OnPause;
             public int Pauses, Disposals; public bool FailDispose;
             public CreationBackend() { Browser = new CreationBrowser(Events); }
@@ -249,6 +278,7 @@ namespace ExplorerTabs.Tests
             public string ReadDirectory(WindowIdentity source)
             { ReadSource = source; if (ReadFailure) throw new InvalidOperationException("fake missing source"); return SourceDirectory; }
             public bool DirectoryExists(string directory) { Events.Add("exists"); return Exists; }
+            public bool IsAt(ICreatedExplorerReference browser, string target) { Events.Add("isat:" + target); return IsAtResult; }
             public ICreatedExplorerReference Create() { Events.Add("create"); OnCreate?.Invoke(); return Browser; }
             public WindowIdentity Inspect(long handle) { Events.Add("inspect:" + handle); return Inspected ?? Identity(handle); }
             public bool Matches(WindowIdentity identity) => ValidIdentity;

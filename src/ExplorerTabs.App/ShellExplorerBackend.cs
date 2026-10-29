@@ -87,14 +87,16 @@ namespace ExplorerTabs.App
             }
             finally { Release(shellWindows); }
         }
-        public bool DirectoryExists(string directory) => System.IO.Directory.Exists(directory);
+        public bool DirectoryExists(string directory) => FolderTarget.IsThisPc(directory) || System.IO.Directory.Exists(directory);
+        public bool IsAt(ICreatedExplorerReference browser, string target) =>
+            browser is BrowserReference reference && FolderTarget.IsThisPc(target) && reference.IsAt(target);
         public ICreatedExplorerReference Create()
         {
             Guid clsid = new Guid("C08AFD90-F2A1-11D1-8455-00A0C91F3880"), iid = typeof(IWebBrowser2Native).GUID;
             trace?.Invoke("Creation CoCreateInstance begin; dedicated ShellBrowserWindow");
             Marshal.ThrowExceptionForHR(CoCreateInstance(ref clsid, IntPtr.Zero, 4, ref iid, out object instance));
             trace?.Invoke("Creation CoCreateInstance returned");
-            try { return new BrowserReference((IWebBrowser2Native)instance, trace); }
+            try { return new BrowserReference((IWebBrowser2Native)instance, instance, trace); }
             catch { Release(instance); throw; }
         }
         public WindowIdentity Inspect(long handle)
@@ -113,11 +115,21 @@ namespace ExplorerTabs.App
         private sealed class BrowserReference : ICreatedExplorerReference, IDeferredExplorerReference
         {
             private readonly IWebBrowser2Native browser;
+            private readonly object source;
             private readonly Action<string>? trace;
-            public BrowserReference(IWebBrowser2Native browser, Action<string>? trace) { this.browser = browser; this.trace = trace; }
+            public BrowserReference(IWebBrowser2Native browser, object source, Action<string>? trace) { this.browser = browser; this.source = source; this.trace = trace; }
             public long Handle => browser.GetHWND();
             public bool Busy => browser.GetBusy();
             public string LocationUrl => browser.GetLocationURL();
+            public bool IsAt(string target)
+            {
+                using (var view = ShellViewReference.TryOpen(source, trace))
+                {
+                    bool matched = view != null && view.CurrentFolderIs(target);
+                    trace?.Invoke("Creation target check; target=" + target + "; matched=" + matched);
+                    return matched;
+                }
+            }
             public void Navigate(string directory, CancellationToken cancellation)
             {
                 // Pass an absolute PIDL SAFEARRAY, avoiding URL parsing and ambiguous Shell string dispatch.

@@ -35,6 +35,8 @@ namespace ExplorerTabs.App
         private readonly IAppSettingsStore? settingsStore;
         private readonly IExplorerTabService explorerTabs;
         private CancellationTokenSource? creation;
+        private readonly GlobalHotkeyRegistration globalHotkeys = new GlobalHotkeyRegistration();
+        private NotifyIcon? tray;
         private readonly IconButton addWindows = new IconButton(UiGlyph.AddWindow, "加入窗口…");
         private readonly IconButton newTab = new IconButton(UiGlyph.NewTab, "新建标签") { Primary = true };
         private readonly IconButton cancelCreation = new IconButton(UiGlyph.Cancel, "取消操作") { Visible = false };
@@ -129,6 +131,8 @@ namespace ExplorerTabs.App
                 }
                 monitor.Start();
                 presentation.Start();
+                hotkeyRegistrationActive = true;
+                ApplyGlobalHotkey(settings.GlobalHotkey);
                 ShowSessionOffer();
             };
             monitor.Interval = 1500;
@@ -261,7 +265,7 @@ namespace ExplorerTabs.App
                 BeginInvoke(new Action(async () =>
                 {
                     Interlocked.Exchange(ref queuedShortcut, 0);
-                    if (closing || IsDisposed || modalDepth > 0 || tabs.IsInteracting || WindowState == FormWindowState.Minimized ||
+                    if (closing || IsDisposed || modalDepth > 0 || tabs.IsInteracting || !Visible || WindowState == FormWindowState.Minimized ||
                         !shortcuts.Checked || !TabKeyboardHook.IsTargetForeground(Handle, controller.Active)) return;
                     await CreateTabAsync(null);
                 }));
@@ -282,6 +286,7 @@ namespace ExplorerTabs.App
             using (EnterModal())
             using (var dialog = new SettingsDialog(CurrentSettings(), controller.Sessions.Count > 0, settingsStore != null))
             {
+                dialog.GlobalHotkeyCheck = CheckGlobalHotkey;
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 RunSafely("保存设置失败，旧设置保持不变", () => ApplySettings(dialog.Result));
             }
@@ -300,6 +305,7 @@ namespace ExplorerTabs.App
             settingsStore?.Save(candidate); // Commit storage first; failed saves never partially update live UI.
             settings = candidate.Copy(); mode.SelectedIndex = settings.Mode == HostingMode.Embedded ? 0 : 1;
             shortcuts.Checked = settings.ShortcutsEnabled && shortcuts.Enabled; tabs.ConfigureLayout(settings.WrapTabs, settings.MaximumTabRows); UpdateToolbarHints(); ShowSessionOffer(); SyncShortcutScope(); UpdateStatus();
+            ApplyGlobalHotkey(settings.GlobalHotkey);
             log.Write("Settings applied; persistent=" + (settingsStore != null));
         }
         private void SaveSettingsOnExit()
@@ -401,7 +407,7 @@ namespace ExplorerTabs.App
 
         private void LayoutCurrent()
         {
-            if (closing || modalDepth > 0 || WindowState == FormWindowState.Minimized || !content.IsHandleCreated) return;
+            if (closing || modalDepth > 0 || !Visible || WindowState == FormWindowState.Minimized || !content.IsHandleCreated) return;
             RunSafely("同步位置失败", () => controller.LayoutActive(CurrentBounds()));
         }
 
@@ -555,7 +561,7 @@ namespace ExplorerTabs.App
         }
 
         private void SyncShortcutScope() => keyboard?.UpdateScope(IsHandleCreated ? Handle : IntPtr.Zero,
-            controller.Active, shortcuts.Checked && !closing && !exitPreparing && workspaceOperation == null && modalDepth == 0 && !tabs.IsInteracting && WindowState != FormWindowState.Minimized,
+            controller.Active, Visible && shortcuts.Checked && !closing && !exitPreparing && workspaceOperation == null && modalDepth == 0 && !tabs.IsInteracting && WindowState != FormWindowState.Minimized,
             controller.Sessions.Count(s => s.State == SessionState.Attached) >= 2, creation == null && workspaceOperation == null && !explorerTabs.IsBusy, settings.KeyBindings);
 
         private void QueueShortcut(int direction)
@@ -567,7 +573,7 @@ namespace ExplorerTabs.App
                 BeginInvoke(new Action(() =>
                 {
                     Interlocked.Exchange(ref queuedShortcut, 0);
-                    if (closing || IsDisposed || modalDepth > 0 || tabs.IsInteracting || WindowState == FormWindowState.Minimized ||
+                    if (closing || IsDisposed || modalDepth > 0 || tabs.IsInteracting || !Visible || WindowState == FormWindowState.Minimized ||
                         !shortcuts.Checked || !TabKeyboardHook.IsTargetForeground(Handle, controller.Active)) return;
                     var next = controller.Adjacent(direction);
                     if (next == null) return;
@@ -674,7 +680,7 @@ namespace ExplorerTabs.App
         {
             // Capture before a modal dialog changes visibility in grouped mode.
             string windowState = presentation.Snapshot("user-export-before-dialog", discoverStandalone: true) +
-                Environment.NewLine + $"Host UI: version={typeof(MainForm).Assembly.GetName().Version} dpi={DeviceDpi} state={WindowState} bounds={Bounds} client={ClientRectangle} padding={Padding} chrome={chrome?.Bounds} toolbar={commandToolbar?.Bounds} content={content.Bounds} sessionOfferVisible={sessionOffer.Visible} tabWrap={tabs.WrapContents} tabHeight={tabs.Height} horizontalScroll={tabs.HorizontalScroll.Visible} verticalScroll={tabs.VerticalScroll.Visible}";
+                Environment.NewLine + $"Host UI: version={typeof(MainForm).Assembly.GetName().Version} dpi={DeviceDpi} state={WindowState} bounds={Bounds} client={ClientRectangle} padding={Padding} chrome={chrome?.Bounds} toolbar={commandToolbar?.Bounds} content={content.Bounds} sessionOfferVisible={sessionOffer.Visible} tabWrap={tabs.WrapContents} tabHeight={tabs.Height} horizontalScroll={tabs.HasHorizontalScrollbar()} verticalScroll={tabs.HasVerticalScrollbar()} scroll={tabs.ScrollPosition()}";
             using (EnterModal())
             using (var dialog = new SaveFileDialog
             {
@@ -736,6 +742,7 @@ namespace ExplorerTabs.App
                 workspaceOperation?.Cancel(); creation?.Cancel(); keyboard?.Dispose(); monitor.Dispose();
                 cancelRevealTimer.Stop(); cancelRevealTimer.Dispose();
                 DisposeManagedMenus(); presentation.Dispose(); chromeTips.Dispose();
+                globalHotkeys.Unregister(); hotkeyRegistrationActive = false; DisposeTray();
             }
             base.Dispose(disposing);
             if (disposing) { applicationIcon?.Dispose(); applicationIcon = null; }

@@ -5,7 +5,8 @@ param(
     [switch]$TabUiSmoke,
     [switch]$CreationUiSmoke,
     [switch]$WorkspaceUiSmoke,
-    [switch]$TreatWarningsAsErrors
+    [switch]$TreatWarningsAsErrors,
+    [switch]$CloseRunningHost
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -18,6 +19,45 @@ if ([string]::Equals($destination, (Join-Path $root 'dist'), [StringComparison]:
     throw 'The original dist directory is reserved. Choose a versioned subdirectory.'
 }
 $targetExe = Join-Path $destination 'ExplorerTabs.exe'
+# dev.bat opts into an explicit confirmation before bypassing the running-host guard.
+# Never close a host silently: list it, default to cancel, and only continue on Y.
+if ($CloseRunningHost) {
+    $running = @(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue)
+    if ($running.Count -gt 0) {
+        Write-Host ""
+        Write-Host "[WARN] 检测到 ExplorerTabs 正在运行：" -ForegroundColor Yellow
+        foreach ($process in $running) {
+            $processPath = $null
+            try { $processPath = $process.Path } catch { }
+            if ([string]::IsNullOrEmpty($processPath)) { $processPath = '(无法读取路径)' }
+            Write-Host ("       PID {0}  {1}" -f $process.Id, $processPath)
+        }
+        Write-Host "       关闭宿主后，已嵌入的标签窗口可能一并关闭且无法恢复。"
+        if ([Console]::IsInputRedirected) {
+            throw "ExplorerTabs is still running. Run dev.bat from an interactive console so you can confirm closing it."
+        }
+        $answer = Read-Host "是否强制关闭并继续构建？输入 Y 确认，其它任意输入取消"
+        if ($answer -notmatch '^\s*[Yy]([Ee][Ss])?\s*$') {
+            Write-Host "[INFO] 已取消：未关闭任何进程，也未启动应用。" -ForegroundColor Yellow
+            exit 2
+        }
+        foreach ($process in $running) {
+            try { $null = $process.CloseMainWindow() } catch { }
+        }
+        # Give the normal close (session save / settings / detach) a bounded chance first.
+        $deadline = (Get-Date).AddSeconds(12)
+        while ((Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+        }
+        foreach ($process in @(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue)) {
+            try { $process.Kill(); $process.WaitForExit(5000) } catch { }
+        }
+        if (@(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue).Count -gt 0) {
+            throw "无法关闭运行中的 ExplorerTabs（可能需要管理员权限）。请手动退出后重试。"
+        }
+        Write-Host "[INFO] 已关闭运行中的 ExplorerTabs，继续构建。" -ForegroundColor Green
+    }
+}
 if (Test-Path -LiteralPath $targetExe) {
     foreach ($running in @(Get-Process -Name ExplorerTabs -ErrorAction SilentlyContinue)) {
         $runningPath = $null

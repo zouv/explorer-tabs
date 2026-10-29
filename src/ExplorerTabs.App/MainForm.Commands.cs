@@ -94,7 +94,7 @@ namespace ExplorerTabs.App
                 BeginInvoke(new Action(async () =>
                 {
                     Interlocked.Exchange(ref queuedShortcut, 0);
-                    if (closing || exitPreparing || IsDisposed || modalDepth > 0 || tabs.IsInteracting || WindowState == FormWindowState.Minimized || !shortcuts.Checked || !TabKeyboardHook.IsTargetForeground(Handle, controller.Active)) return;
+                    if (closing || exitPreparing || IsDisposed || modalDepth > 0 || tabs.IsInteracting || !Visible || WindowState == FormWindowState.Minimized || !shortcuts.Checked || !TabKeyboardHook.IsTargetForeground(Handle, controller.Active)) return;
                     try { await ExecuteCommandAsync(command); } catch (Exception error) { ReportError("快捷键操作未完成", error); }
                 }));
             }

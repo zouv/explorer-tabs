@@ -612,28 +612,28 @@ namespace ExplorerTabs.Tests
                 closeButton.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(closeButton, new object[] { EventArgs.Empty });
                 Check(host.Active == second, "pressing the close glyph never selects the tab");
-                Check(!strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible &&
+                Check(!(bool)Call("HasHorizontalScrollbar")! && !(bool)Call("HasVerticalScrollbar")! &&
                     strip.Controls.Cast<Control>().All(c => c.Top >= 0 && c.Bottom <= strip.ClientSize.Height),
                     "short adaptive titles fit the minimum-width host without an unnecessary scrollbar");
                 foreach (var session in host.Sessions) host.RenameTab(session, "用于检查完整标题溢出与滚动的很长的项目目录名称 · " + session.Identity.Handle);
                 Refresh(); form.PerformLayout();
-                Check(strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible &&
+                Check((bool)Call("HasHorizontalScrollbar")! && !(bool)Call("HasVerticalScrollbar")! &&
                     strip.Controls.Cast<Control>().All(c => c.Bottom <= strip.ClientSize.Height),
                     "long-title overflow keeps the entire tab row visible with horizontal-only scrolling");
                 Call("Reveal", fourth);
                 Check(ButtonFor(fourth).Left >= 0 && ButtonFor(fourth).Right <= strip.ClientSize.Width,
                     "revealing the last tab scrolls it fully into the visible strip");
-                int offset = -strip.AutoScrollPosition.X; Refresh();
-                Check(-strip.AutoScrollPosition.X == offset, "metadata redraw preserves horizontal scroll position");
+                int offset = ((Point)Call("ScrollPosition")!).X; Refresh();
+                Check(((Point)Call("ScrollPosition")!).X == offset, "metadata redraw preserves horizontal scroll position");
                 foreach (var session in host.Sessions)
                 { if (session == first) host.RenameTab(session, "常用 & 项目目录"); else host.ResetTabTitle(session); }
-                Refresh(); strip.AutoScrollPosition = Point.Empty;
+                Refresh(); Call("ResetScrollPosition");
                 var clickButton = ButtonFor(third);
                 clickButton.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(clickButton, new object[] { EventArgs.Empty });
                 Check(host.Active == second && !clickButton.IsDisposed, "tab selection is queued until the mouse message has completed");
                 Application.DoEvents();
                 Check(host.Active == third && clickButton.IsDisposed, "queued tab selection executes and safely rebuilds its controls");
-                host.Activate(second, Bounds); Refresh(); strip.AutoScrollPosition = Point.Empty;
+                host.Activate(second, Bounds); Refresh(); Call("ResetScrollPosition");
                 api.Events.Clear(); int writes = store.Writes;
                 var button = ButtonFor(first);
                 Check(TabCount() == 4 && button.Text == first.DisplayTitle && button.AccessibleName == first.DisplayTitle,

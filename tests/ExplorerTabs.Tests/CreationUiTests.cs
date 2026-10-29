@@ -181,12 +181,20 @@ namespace ExplorerTabs.Tests
                     MakeHidden(dialog);
                     Check(!UiField<ComboBox>(dialog, "mode").Enabled && UiField<TextBox>(dialog, "directory").Text == @"C:\New",
                         "settings dialog locks mode for existing tabs and pre-fills directory");
-                    UiField<TextBox>(dialog, "directory").Text = "shell:MyComputerFolder"; ((Button)dialog.AcceptButton!).PerformClick();
+                    UiField<TextBox>(dialog, "directory").Text = "shell:RecycleBinFolder"; ((Button)dialog.AcceptButton!).PerformClick();
                     Check(dialog.DialogResult == DialogResult.None && UiField<Label>(dialog, "error").Text.Length > 0,
                         "invalid setting is reported inline without closing or invoking Shell");
                     UiField<TextBox>(dialog, "directory").Text = @" C:\资料\ "; ((Button)dialog.AcceptButton!).PerformClick();
                     var result = (AppSettings)dialogType.GetProperty("Result")!.GetValue(dialog)!;
                     Check(dialog.DialogResult == DialogResult.OK && result.NewTabDirectory == @"C:\资料", "settings confirmation returns normalized folder");
+                }
+                using (var dialog = (Form)Activator.CreateInstance(dialogType, settings, true, true)!)
+                {
+                    MakeHidden(dialog);
+                    UiField<TextBox>(dialog, "directory").Text = FolderTarget.ThisPc; ((Button)dialog.AcceptButton!).PerformClick();
+                    var result = (AppSettings)dialogType.GetProperty("Result")!.GetValue(dialog)!;
+                    Check(dialog.DialogResult == DialogResult.OK && result.NewTabDirectory == FolderTarget.ThisPc,
+                        "settings accepts the This PC virtual target");
                 }
                 using (var dialog = (Form)Activator.CreateInstance(dialogType, settings, false, false)!)
                 {

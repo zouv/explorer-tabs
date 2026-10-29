@@ -88,6 +88,8 @@ namespace ExplorerTabs.Core
         IReadOnlyCollection<long> CaptureExistingHandles();
         string ReadDirectory(WindowIdentity source);
         bool DirectoryExists(string directory);
+        /// <summary>Exact target check for virtual shell folders (currently This PC).</summary>
+        bool IsAt(ICreatedExplorerReference browser, string target);
         ICreatedExplorerReference Create();
         WindowIdentity Inspect(long handle);
         bool Matches(WindowIdentity identity);
@@ -101,7 +103,7 @@ namespace ExplorerTabs.Core
             token.ThrowIfCancellationRequested();
             string directory = FolderTarget.Normalize(source == null ? defaultDirectory : backend.ReadDirectory(source));
             token.ThrowIfCancellationRequested();
-            if (!backend.DirectoryExists(directory)) throw new InvalidOperationException("文件夹不存在或无法访问：" + directory);
+            if (!FolderTarget.IsThisPc(directory) && !backend.DirectoryExists(directory)) throw new InvalidOperationException("文件夹不存在或无法访问：" + directory);
             token.ThrowIfCancellationRequested();
             var excluded = new HashSet<long>(backend.CaptureExistingHandles().Concat(attachedHandles));
             token.ThrowIfCancellationRequested();
@@ -138,12 +140,23 @@ namespace ExplorerTabs.Core
                                 throw new InvalidOperationException("新建窗口已关闭或身份改变，未接管其他窗口。");
                             if (!browser.Busy)
                             {
-                                // Navigate2 is asynchronous: Busy may initially be false before LocationURL changes.
-                                string url = browser.LocationUrl;
-                                string? actual = null;
-                                try { actual = FolderTarget.FromLocationUrl(url); }
-                                catch (InvalidOperationException) { } // Initial blank/virtual location: await the requested folder.
-                                if (actual != null && FolderTarget.Same(directory, actual))
+                                bool reached;
+                                if (FolderTarget.IsThisPc(directory))
+                                {
+                                    // Virtual shell folders have no stable file LocationURL; compare the
+                                    // active view's current PIDL with the requested namespace instead.
+                                    reached = backend.IsAt(browser, directory);
+                                }
+                                else
+                                {
+                                    // Navigate2 is asynchronous: Busy may initially be false before LocationURL changes.
+                                    string url = browser.LocationUrl;
+                                    string? actual = null;
+                                    try { actual = FolderTarget.FromLocationUrl(url); }
+                                    catch (InvalidOperationException) { } // Initial blank/virtual location: await the requested folder.
+                                    reached = actual != null && FolderTarget.Same(directory, actual);
+                                }
+                                if (reached)
                                 {
                                     token.ThrowIfCancellationRequested();
                                     var result = new CreatedExplorer(identity, directory, restore);

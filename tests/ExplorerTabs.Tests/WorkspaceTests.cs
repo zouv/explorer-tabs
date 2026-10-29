@@ -18,6 +18,8 @@ namespace ExplorerTabs.Tests
             Check(sample.LastSession!.Tabs[0].Alias == "资料" && sample.Groups[0].Tabs[0].Directory == @"C:\资料" && sample.Favorites[0].Name == "常用资料", "workspace library deeply copies session, groups and favorites");
             Check(WorkspaceLibrary.SameSession(sample.LastSession, sample.LastSession.Copy()) && !WorkspaceLibrary.SameSession(sample.LastSession, copy.LastSession), "session content comparison ignores generated ID but detects aliases");
             Check(WorkspaceLibrary.SameSession(null, null) && !WorkspaceLibrary.SameSession(null, sample.LastSession), "empty session comparison is explicit");
+            var virtualLibrary = sample.Copy(); virtualLibrary.LastSession!.Tabs[0].Directory = FolderTarget.ThisPc;
+            WorkspaceLibrary.Validate(virtualLibrary); Check(true, "This PC targets are accepted in saved sessions");
             foreach (var mutate in new Action<WorkspaceLibrary>[] {
                 w => w.Version = 9, w => w.LastSession!.ActiveIndex = 2, w => w.LastSession!.Tabs.Clear(), w => w.LastSession!.Id = "invalid",
                 w => w.LastSession!.Tabs[0].Directory = "shell:Desktop", w => w.LastSession!.Tabs[0].Alias = "", w => w.Groups.Add(w.Groups[0].Copy()),
@@ -110,6 +112,7 @@ namespace ExplorerTabs.Tests
             public string ReadDirectory(WindowIdentity identity) { SourceHandle = identity.Handle; Entered?.Set(); Release?.Wait(); return @"C:\资料"; }
             public IReadOnlyCollection<long> CaptureExistingHandles() => Array.Empty<long>();
             public bool DirectoryExists(string directory) => true;
+            public bool IsAt(ICreatedExplorerReference browser, string target) => true;
             public ICreatedExplorerReference Create() { Creates++; throw new InvalidOperationException("must not create"); }
             public WindowIdentity Inspect(long handle) => Identity(handle);
             public void Pause(CancellationToken token) => token.ThrowIfCancellationRequested(); public void Dispose() { }

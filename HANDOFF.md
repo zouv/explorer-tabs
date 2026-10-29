@@ -1,10 +1,16 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-10-28；无进行中开发任务；0.9.0 已发布：GitHub Release v0.9.0 已上传（release zip + debug zip + SHA256SUMS）；本轮窗口缩放 / 顶部 3px 带 / 失焦边框 / 最大化 / 欢迎页 / 标签栏双击 / dev.bat / 打包确认已完成，849 项安全检查通过；窗口尺寸记忆已有回归测试；待用户真机复验。
+状态日期：2026-10-29；无进行中开发任务；0.10.0 版本号已升（Directory.Build.props），准备打包 / 上传；0.9.0 已发布：GitHub Release v0.9.0 已上传（release zip + debug zip + SHA256SUMS）；2026-10-29 完成弹窗实色 1px 圆角环、设置左导航 / 目录预设 / “此电脑”、全局快捷键（呼出 / 隐藏 + 托盘），并保留此前 Wrap Tabs / `+` / dev.bat 修复；875 项安全检查通过，待真机观感、真实 Shell 此电脑与全局热键 / 托盘验证。
 源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 / 0.8.0 / 0.8.1 / 0.9.0 Release 均已上传。
-最后验证：2026-10-28 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，849 项（核心 455、原生 63、跨进程 17、标签 UI 38、创建 UI 39、工作空间 / 窗框 UI 237）；新增 3px 顶部带 / 标签栏顶部转发 / 最大化外扩 / 最小跟踪尺寸 / 欢迎页随缩放重排 / 保存 Bounds 启动恢复等隐藏 UI 断言；`bash check-docs.sh` 通过（ARCHITECTURE 174 行、HANDOFF ≤150 行）。0.9.0 包：`dist/dev/ExplorerTabs_0.9.0_x64-unpack-debug.zip`、`dist/release/ExplorerTabs_0.9.0_x64-unpack.zip`、`dist/release/SHA256SUMS.txt`，已上传 GitHub Release v0.9.0；`dist/release/unpack` 已刷新为 0.9.0。
+最后验证：2026-10-29 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，875 项（核心 471、原生 63、跨进程 17、标签 UI 38、创建 UI 40、工作空间 / 窗框 UI 246）；新增弹窗背景环 / 圆角 region、设置预设 / 全局快捷键保存与冲突、This PC token / PIDL 流程、Wrap 滚动条、`+` 不独自换行等断言；`bash check-docs.sh` 通过（ARCHITECTURE ≤ 400 行、HANDOFF ≤ 150 行）。验证时无运行中的真实宿主；真实 Shell 的此电脑创建 / 匹配、真实 RegisterHotKey / 托盘 / 隐藏呼出无法在隐藏测试中覆盖，需人工验证。构建输出在 `.runtime/build/ExplorerTabs-verify`。0.9.0 包：`dist/dev/ExplorerTabs_0.9.0_x64-unpack-debug.zip`、`dist/release/ExplorerTabs_0.9.0_x64-unpack.zip`、`dist/release/SHA256SUMS.txt`，已上传 GitHub Release v0.9.0；`dist/release/unpack` 已刷新为 0.9.0。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
+- 2026-10-29 dev.bat 运行中宿主确认待手动复验：先启动一次 ExplorerTabs，再运行 `dev.bat`。应列出 PID / 路径并询问；输入 N 或直接回车应取消、不关闭进程，输入 Y 应先尝试正常关闭（12 秒超时强制结束）后继续构建并启动。重定向 / 非交互输入会直接拒绝。
+- 2026-10-29 弹窗 chrome 待真机复验：退出旧实例后运行 `dev.bat` 或 `.runtime/build/ExplorerTabs-verify/ExplorerTabs.exe`。所有自建弹窗的四条直边应为完全一致的 1px 灰蓝边框，无描边发虚、无右下投影；圆角是 1px 像素台阶（已确认的取舍）。请重点看左上 / 右下圆角是否连续、四边是否同粗细。
+- 2026-10-29 设置面板 / 目录预设待复验：左导航三页（常规 / 标签栏 / 快捷键）对齐与控件风格；点击“我的电脑 / 用户目录 / 文档 / 下载 / 自定义…”应更新路径并在保存后用于新建标签。请分别在 100% / 125% / 150% DPI 下检查对齐和截断。
+- 2026-10-29 此电脑待真机验证：在设置中选择“我的电脑”并新建标签，应打开“此电脑”；随后保存会话、重启恢复、收藏此目录并打开，均应保持虚拟位置。若失败请提供 host.log（关注 `Creation source directory provider=IPersistFolder2/ThisPC` 及创建匹配失败信息）。
+- 2026-10-29 全局快捷键待真机验证：在设置 → 快捷键中点击输入框并按下组合键（如 Ctrl+Alt+E），保存后应能在任意程序前台呼出 / 隐藏宿主；隐藏后任务栏按钮消失、托盘图标出现，右键可显示 / 关闭并分离 / 关闭；再按快捷键应恢复窗口与活动标签。请测试与其它程序冲突时的内联提示、以及分组模式下的隐藏 / 恢复；捕获时按当前组合键不应隐藏窗口。
+- 2026-10-29 Wrap Tabs / 滚动条 / `+` 待真机复验：先退出旧宿主再运行 `dev.bat`。开启 Wrap 后标签栏不应再同时出现横 / 纵原生滚动条；单行溢出时只在标签栏底部显示 4px 细条，多行超过行数上限时只在右侧显示，可悬停、拖动、滚轮滚动；标签行将满时 `+` 应紧贴最后一个标签（最后一个标签可能略微收窄或与其一起换行），不再独自占一行。请确认观感与滚动手感。
 - 2026-10-28 窗口 / 标签栏体验待复验：退出旧宿主后运行 `dev.bat`（构建并启动 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`）。顶部视觉空白已缩至 3px，标签栏 / 标签顶部 4px 仍可缩放（顶部总命中约 7px），侧边 / 底部 / 四角不变；标签栏空白双击切换最大化 / 还原；无标签时调整窗口大小，欢迎页图标 / 标题 / 按钮应重新居中。请分别确认观感、顶部缩放手感与双击行为。检查时启动的探针实例已正常关闭，探针改动的 settings 窗口状态已恢复为 Bounds (0,0,800,607)、Maximized=false。
 - 窗口尺寸记忆：正常退出时已保存 Bounds / Maximized，下次启动按工作区夹取恢复（本轮补了隐藏 UI 回归测试）。若你实际遇到不恢复，请告知关闭方式（X / Alt+F4 / 应用菜单 / 分离后退出）与当时的窗口状态。
 - 2026-10-28 打包确认流程待复验：`package.bat` 在检测到 ExplorerTabs 运行时列出 PID / 路径并询问；输入 Y 才先尝试正常关闭（12 秒超时强制结束）并继续打包，其它输入取消；非交互输入直接拒绝。请在实际运行宿主时试一次 Y / 非 Y 两条路径。dev.bat 的 LF 行尾问题已改为 CRLF，验证时启动的开发实例已正常关闭。

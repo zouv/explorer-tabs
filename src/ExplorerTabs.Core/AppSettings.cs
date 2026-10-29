@@ -20,12 +20,13 @@ namespace ExplorerTabs.Core
         [DataMember] public bool WrapTabs { get; set; }
         [DataMember] public int MaximumTabRows { get; set; } = 3;
         [DataMember] public bool RememberSession { get; set; } = true;
+        [DataMember(EmitDefaultValue = false)] public string? GlobalHotkey { get; set; }
         [DataMember] public List<HostShortcut> KeyBindings { get; set; } = HostShortcutCatalog.Defaults();
         [OnDeserializing] private void Defaults(StreamingContext context)
-        { Version = 1; Mode = HostingMode.Embedded; ShortcutsEnabled = true; NewTabDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); MaximumTabRows = 3; RememberSession = true; KeyBindings = HostShortcutCatalog.Defaults(); }
+        { Version = 1; Mode = HostingMode.Embedded; ShortcutsEnabled = true; NewTabDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); MaximumTabRows = 3; RememberSession = true; GlobalHotkey = null; KeyBindings = HostShortcutCatalog.Defaults(); }
         public AppSettings Copy() => new AppSettings { Version = Version, Mode = Mode, ShortcutsEnabled = ShortcutsEnabled,
             NewTabDirectory = NewTabDirectory, Bounds = Bounds, Maximized = Maximized, WrapTabs = WrapTabs, MaximumTabRows = MaximumTabRows,
-            RememberSession = RememberSession, KeyBindings = KeyBindings.Select(k => k.Copy()).ToList() };
+            RememberSession = RememberSession, GlobalHotkey = GlobalHotkey, KeyBindings = KeyBindings.Select(k => k.Copy()).ToList() };
     }
     public interface IAppSettingsStore
     {
@@ -67,6 +68,14 @@ namespace ExplorerTabs.Core
             FolderTarget.Normalize(settings.NewTabDirectory);
             if (settings.MaximumTabRows < 2 || settings.MaximumTabRows > 8) throw new InvalidDataException("多行标签上限必须为 2–8 行。");
             HostShortcutCatalog.Validate(settings.KeyBindings);
+            string? globalHotkey = settings.GlobalHotkey;
+            if (globalHotkey != null && !string.IsNullOrWhiteSpace(globalHotkey))
+            {
+                try { GlobalHotkeyDefinition.Normalize(globalHotkey); }
+                catch (ArgumentException issue) { throw new InvalidDataException(issue.Message, issue); }
+                if (GlobalHotkeyDefinition.Conflicts(globalHotkey, settings.KeyBindings))
+                    throw new InvalidDataException("全局快捷键不能与宿主快捷键重复。");
+            }
         }
     }
     public static class SettingsLayoutPolicy

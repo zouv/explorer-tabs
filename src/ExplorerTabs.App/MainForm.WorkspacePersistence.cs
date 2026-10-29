@@ -51,9 +51,9 @@ namespace ExplorerTabs.App
             if (failures.Count > 0)
             {
                 log.Write("Workspace capture incomplete; prior file retained: " + string.Join(" | ", failures));
-                throw new InvalidOperationException("部分标签目录无法读取，未覆盖旧会话 / 标签组。虚拟目录暂不支持（详见日志）。");
+                throw new InvalidOperationException("部分标签目录无法读取，未覆盖旧会话 / 标签组。除“此电脑”外的虚拟目录暂不支持（详见日志）。");
             }
-            if (sessions.Length > 0 && saved.Tabs.Count == 0) throw new InvalidOperationException("没有可保存的普通目录，旧会话保留。虚拟目录暂不支持。");
+            if (sessions.Length > 0 && saved.Tabs.Count == 0) throw new InvalidOperationException("没有可保存的目录，旧会话保留。除“此电脑”外的虚拟目录暂不支持。");
             return saved.Tabs.Count == 0 ? null : saved;
         }
         private async Task SaveSessionAsync(bool automatic)

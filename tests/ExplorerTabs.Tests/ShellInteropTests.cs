@@ -78,7 +78,7 @@ namespace ExplorerTabs.Tests
         {
             object rcw = Marshal.GetObjectForIUnknown(native.Pointer);
             var type = assembly.GetType("ExplorerTabs.App.ShellExplorerBackend+BrowserReference", true)!;
-            try { return (ICreatedExplorerReference)Activator.CreateInstance(type, rcw, trace)!; }
+            try { return (ICreatedExplorerReference)Activator.CreateInstance(type, rcw, rcw, trace)!; }
             catch { Marshal.ReleaseComObject(rcw); throw; }
         }
 

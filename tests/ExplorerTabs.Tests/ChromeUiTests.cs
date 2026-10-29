@@ -24,6 +24,8 @@ namespace ExplorerTabs.Tests
                     var toolbarRight = UiField<FlowLayoutPanel>(form, "commandToolbarRight");
                     var toolbarHost = toolbar.Parent!;
                     Check(UiField<object?>(form, "keyboard") == null, "hidden chrome does not register global keyboard hook");
+                    var hotkeys = UiField<object>(form, "globalHotkeys");
+                    Check((string?)hotkeys.GetType().GetProperty("Current")!.GetValue(hotkeys) == null, "hidden chrome does not register the global hotkey");
                     Check(form.Icon != null && form.Icon.Width > 0, "application icon is loaded from embedded multi-size ICO");
                     long style = ChromeStyle(form.Handle, -16).ToInt64();
                     Check((style & 0x00C00000) == 0 && (style & 0x000F0000) == 0x000F0000, "own host HWND has no caption but retains resizing/system/min/max styles");
@@ -126,12 +128,12 @@ namespace ExplorerTabs.Tests
                     Check(!tips.GetToolTip(newButton).Contains("Ctrl+"), "disabled keyboard bindings are not advertised in toolbar tooltips");
                     for (int i = 1; i <= 20; i++) { api.Alive.Add(i); Add(host, i); }
                     host.Activate(host.Sessions[0], Bounds); form.Width = 720; UiCall(form, "RefreshTabs"); form.PerformLayout();
-                    Check(strip.HorizontalScroll.Visible && !strip.VerticalScroll.Visible && chrome.Height <= 56, "single-row overflow reserves only its real scrollbar height");
+                    Check((bool)UiCall(strip, "HasHorizontalScrollbar")! && !(bool)UiCall(strip, "HasVerticalScrollbar")! && chrome.Height <= 40, "single-row overflow keeps the compact chrome and only a thin horizontal bar");
                     Check(content.Controls.Cast<Control>().All(c => !c.Visible), "welcome actions disappear when real Explorer tabs are present");
                     UiAnyCall(strip, "ConfigureLayout", true, 3); form.PerformLayout();
                     Check(chrome.Height == strip.Height && chrome.Height <= 100 && toolbarHost.Top == chrome.Bottom, "wrap height updates enclosing chrome without overlapping toolbar");
                     Check(capButtons.All(b => b.Top == 0) && brandArea.Controls[0].Height <= 36, "wrapped tabs do not vertically center window controls or brand");
-                    Check(strip.VerticalScroll.Visible && !strip.HorizontalScroll.Visible, "wrapped browser chrome keeps vertical overflow");
+                    Check((bool)UiCall(strip, "HasVerticalScrollbar")! && !(bool)UiCall(strip, "HasHorizontalScrollbar")!, "wrapped browser chrome keeps vertical overflow");
                     Check(!api.Events.Any(e => e.StartsWith("restore")), "browser chrome layout never reparents or restores managed Explorer");
                     UiCall(form, "SetCreationControls", true);
                     Check(!newButton.Enabled, "async preparation immediately disables new commands");
@@ -179,6 +181,7 @@ namespace ExplorerTabs.Tests
                     Check(logo.Image != null, "about dialog shows the embedded application icon");
                 }
                 AdaptiveTabWidthsSmoke(dir);
+                TrailingActionWrapSmoke(dir);
                 BoundsRestoreSmoke(dir);
             }
             finally { Directory.Delete(dir, true); }
@@ -200,15 +203,15 @@ namespace ExplorerTabs.Tests
                 Check(buttons[3].Text.Contains("&") && buttons[3].Width > buttons[0].Width, "ampersands remain literal measured title characters");
                 var original = buttons.Select(b => b.Width).ToArray();
                 UiAnyCall(strip, "ConfigureLayout", true, 3); strip.PerformLayout();
-                Check(!strip.HorizontalScroll.Visible && buttons.All(b => b.Right <= strip.ClientSize.Width), "mixed-width wrapped titles stay inside the viewport");
+                Check(!(bool)UiCall(strip, "HasHorizontalScrollbar")! && buttons.All(b => b.Right <= strip.ClientSize.Width), "mixed-width wrapped titles stay inside the viewport");
                 Check(buttons.Select(b => b.Top).Distinct().Count() >= 2 && buttons.Select(b => b.Width).SequenceEqual(original), "wrapping packs mixed widths without turning them into equal columns");
                 for (int i = 1; i < buttons.Length; i++)
                     Check(buttons[i].Top != buttons[i - 1].Top || buttons[i].Left >= buttons[i - 1].Right,
                         "variable-width neighbors do not overlap " + i);
                 form.Width = 720; form.PerformLayout(); strip.PerformLayout();
-                Check(strip.VerticalScroll.Visible && !strip.HorizontalScroll.Visible && buttons.All(b => b.Right <= strip.ClientSize.Width), "narrow mixed-width wrap reserves the vertical scrollbar without horizontal overflow");
+                Check((bool)UiCall(strip, "HasVerticalScrollbar")! && !(bool)UiCall(strip, "HasHorizontalScrollbar")! && buttons.All(b => b.Right <= strip.ClientSize.Width), "narrow mixed-width wrap reserves the vertical scrollbar without horizontal overflow");
                 form.Width = 1600; form.PerformLayout(); strip.PerformLayout();
-                Check(!strip.VerticalScroll.Visible && !strip.HorizontalScroll.Visible && buttons.Select(b => b.Top).Distinct().Count() <= 3, "expanding removes an unneeded vertical scrollbar and blank wrapped rows");
+                Check(!(bool)UiCall(strip, "HasVerticalScrollbar")! && !(bool)UiCall(strip, "HasHorizontalScrollbar")! && buttons.Select(b => b.Top).Distinct().Count() <= 3, "expanding removes an unneeded vertical scrollbar and blank wrapped rows");
                 UiAnyCall(strip, "ConfigureLayout", false, 3); strip.PerformLayout();
                 Check(buttons.Select(b => b.Width).SequenceEqual(original), "wrap toggle preserves each measured title width");
                 host.RenameTab(host.Sessions[2], "短名"); UiCall(form, "RefreshTabs");
@@ -220,6 +223,31 @@ namespace ExplorerTabs.Tests
                     strip.Font = form.Font;
                 }
                 Check(!api.Events.Any(e => e.StartsWith("restore")), "adaptive measurements and wrap never restore/reparent Explorer");
+            }
+        }
+        private static void TrailingActionWrapSmoke(string directory)
+        {
+            // A nearly full wrapped row must never leave the new-tab action alone on the next
+            // line: shrink the last tab when it can, otherwise move the last tab down with it.
+            var api = new FakeWindows(); var host = new HostController(api, new FakeStore());
+            for (int i = 1; i <= 10; i++) { api.Alive.Add(i); Add(host, i); }
+            foreach (var session in host.Sessions) host.RenameTab(session, new string('W', 90));
+            using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore(), new AppSettings { WrapTabs = true, MaximumTabRows = 3 }))
+            {
+                form.Width = 760; UiCall(form, "RefreshTabs"); form.PerformLayout();
+                var strip = UiField<FlowLayoutPanel>(form, "tabs"); strip.PerformLayout();
+                var tabs = TabControls(strip); var trailing = UiField<Button>(form, "newTab");
+                Check(tabs.Length == 10 && tabs.Last().Width < 280 && tabs.Last().Width >= 110 &&
+                    trailing.Top == tabs.Last().Top && trailing.Left >= tabs.Last().Right,
+                    "a nearly full row shrinks the last tab so the new-tab action still hugs it [" +
+                    string.Join(" | ", tabs.Select(t => t.Width + "@" + t.Left + "," + t.Top)) +
+                    " action=" + trailing.Left + "," + trailing.Top + " strip=" + strip.ClientSize + "]");
+                foreach (var session in host.Sessions) host.RenameTab(session, "D:");
+                UiCall(form, "RefreshTabs"); strip.PerformLayout();
+                tabs = TabControls(strip);
+                Check(tabs.All(t => t.Width == 110) && tabs.Last().Top != tabs[0].Top &&
+                    trailing.Top == tabs.Last().Top && trailing.Left >= tabs.Last().Right,
+                    "at minimum width the last tab moves down with the action instead of leaving it alone");
             }
         }
         private static void BoundsRestoreSmoke(string directory)
