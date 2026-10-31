@@ -104,6 +104,12 @@
 
 ---
 
+## 分支策略（铁律）
+
+开发时直接在主分支提交，不要另建功能 / 修复分支；只有用户明确要求时才新建分支。
+
+---
+
 ## 4. 验证（改完怎么确认没坏）
 
 - 改代码后至少：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke`（或 `构建 TreatWarningsAsErrors=true；bash check-docs.sh`）。
