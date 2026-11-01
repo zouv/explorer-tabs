@@ -1,19 +1,16 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-11-01；P43 0.11.0 发布进行中，用户已授权升版本、commit & push、package & upload。程序集版本已改为 0.11.0，1073 项完整隔离检查通过，当前 main 工作树待提交 / 打包 / 发布；不启动真实宿主或操作用户 Explorer。
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；0.6.3 / 0.6.4 / 0.7.0 / 0.8.0 / 0.8.1 / 0.9.0 / 0.10.0 Release 均已上传。
-最后验证：2026-11-01 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，1073 项断言检查（核心 504、原生 63、跨进程 17、标签 UI 38、创建 UI 40、工作空间 / 窗框 / 菜单 UI 386〔含 15 项三档离屏菜单布局〕、隔离打包 25），零编译警告 / 零错误。输出 `.runtime/build/ExplorerTabs-v0.11.0-verified/ExplorerTabs.exe`，日志 `.runtime/verification-v0.11.0/full-build.txt`，菜单图片同目录 `menus/`；未启动真实交互宿主、未注册全局钩子、未操作用户 Explorer、未执行正式打包。Git Bash `bash -o igncr check-docs.sh`（0 警告，兼容现有 CRLF）与 `git diff --check` 通过。旧响应性 / preferences 验证快照与日志保留。
+状态日期：2026-11-01；无进行中任务。P43 0.11.0 版本提交、打包与 GitHub 发布已完成，代码提交 / 标签已推送；真实 Shell 与交互体验待用户反馈，不自动操作。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；当前正式版本 0.11.0，Release https://github.com/zouv/explorer-tabs/releases/tag/v0.11.0；历史 Release 保留。
+最后验证：2026-11-01 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，1073 项断言检查（核心 504、原生 63、跨进程 17、标签 UI 38、创建 UI 40、工作空间 / 窗框 / 菜单 UI 386〔含 15 项三档离屏菜单布局〕、隔离打包 25），零编译警告 / 零错误。输出 `.runtime/build/ExplorerTabs-v0.11.0-verified/ExplorerTabs.exe`，日志 `.runtime/verification-v0.11.0/full-build.txt`，菜单图片同目录 `menus/`；隔离检查未启动真实交互宿主、未注册全局钩子、未操作用户 Explorer。正式打包另已完成，Debug / Release 程序集版本、zip 全项、Release 与验证快照二进制一致性通过；三个 GitHub 附件的远端 digest 与下载后 SHA-256 均匹配。Git Bash `bash -o igncr check-docs.sh`（0 警告，兼容现有 CRLF）与 `git diff --check` 通过。旧响应性 / preferences 验证快照与日志保留。
 
-## 当前任务
-- 目标 / 范围：P43，Directory.Build.props 升至 0.11.0，归档 CHANGELOG，验证全部实现并提交 main；正式打包 Debug / Release zip、生成 SHA256SUMS，创建并核验 GitHub Release v0.11.0。
-- DoD：完整隔离检查 / 文档检查通过，提交与标签推送成功，产物版本和校验和正确，Release 资产上传 / 发布核验，收尾文档提交推送并清空进行中计划。
-- 下一步：版本与完整验证已通过；提交推送 main 后正式打包，核验 0.11.0 程序集 / zip 内容 / 校验和，再创建并发布 GitHub Release，收尾状态另提交。
+正式入口 `dist/release/unpack/ExplorerTabs.exe`；Release / Debug zip 与 `dist/release/SHA256SUMS.txt` 均已发布。标签 `v0.11.0` 固定指向代码提交 `02e2d69`，后续仅提交发布结果文档，不移动标签或重打已发布包。完整发布记录见 CHANGELOG 0.11.0 / ROADMAP P43。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
-- 2026-11-01 最新 menus 快照包含前两轮响应性与偏好改动。正常退出旧宿主后手动运行上方输出；确认应用 / 托盘退出两项的窗口保留结果、收藏 / 组直接打开与管理入口、会话追加恢复、只读 / 忙碌禁用，以及长名称在高 DPI 下的显示；离屏检查不等于真实弹出与键鼠验收。
+- 2026-11-01 正式 0.11.0 包包含前三轮改动。正常退出旧宿主后手动运行正式入口；确认应用 / 托盘退出两项的窗口保留结果、收藏 / 组直接打开与管理入口、会话追加恢复、只读 / 忙碌禁用，以及长名称在高 DPI 下的显示；离屏检查不等于真实弹出与键鼠验收。
 
 - 2026-11-01 热键 / 尺寸：默认切后台应最小化并保留任务栏，勾选托盘选项后才隐藏；其他程序前台时按键应呼出，最大化切后台 / 呼出应仍最大化，设置捕获期间不切换窗口。用 X / Alt+F4 / 退出并保留窗口分别在普通 / 最大化 / 最小化 / 托盘状态关闭后重开，确认尺寸不变；真实注册 / 前台 / 托盘尚未自动操作。
-- 2026-11-01 本轮请先正常退出旧宿主，再手动运行新的响应性验证快照（见上方路径，不用 dev.bat 覆盖此快照）。新建 / 复制应立即出占位、成功后原位变真实标签；失败 / 取消应清占位且旧标签可用；Explorer 自身准备仍可能耗时。
+- 2026-11-01 本轮请先正常退出旧宿主，再手动运行正式 0.11.0 包（见上方入口）。新建 / 复制应立即出占位、成功后原位变真实标签；失败 / 取消应清占位且旧标签可用；Explorer 自身准备仍可能耗时。
 - 2026-11-01 关闭请比较点击反馈与移除延迟，确认活动标签请求后切左邻 / 右邻；若 Explorer 有阻挡对话框，6 秒后仍保留标签、可再次关闭或分离。不应强制杀进程；慢目录读取超时不提供可能错误的重开路径。150ms / 75ms 不代表实机总耗时保证。
 - 2026-11-01 隐藏 / 最小化与菜单打开期间完成新建、外部关闭活动标签，不应复活 Explorer；呼出后活动内容应正常。多标签慢目录保存失败 / 退出 30 秒超时应保留旧库；菜单反复打开、改名 / 排序后动作应仍对应正确标签。
 - 2026-10-29 dev.bat 运行中宿主确认待手动复验：先启动一次 ExplorerTabs，再运行 `dev.bat`。应列出 PID / 路径并询问；输入 N 或直接回车应取消、不关闭进程，输入 Y 应先尝试正常关闭（12 秒超时强制结束）后继续构建并启动。重定向 / 非交互输入会直接拒绝。
@@ -26,7 +23,7 @@
 - 窗口尺寸记忆本轮已覆盖首次 DPI 缩放与最小化退出边界，新增真实退出准备 / 重开和最大化隐藏回归；强制结束进程不保证保存（仅正常退出落盘），显示器 / DPI 变化时仍受工作区与最小尺寸限制。
 - 2026-10-28 打包确认流程待复验：`package.bat` 在检测到 ExplorerTabs 运行时列出 PID / 路径并询问；输入 Y 才先尝试正常关闭（12 秒超时强制结束）并继续打包，其它输入取消；非交互输入直接拒绝。请在实际运行宿主时试一次 Y / 非 Y 两条路径。dev.bat 的 LF 行尾问题已改为 CRLF，验证时启动的开发实例已正常关闭。
 - 2026-10-28 修复待复验：重启系统后打开新标签，预期不再弹「DPI awareness 不一致」；host.log 应出现 `attach.dpi-mismatch ... hostContext=PerMonitorV2(96) targetContext=Unaware(96) allowed=True`。空闲 ≥20 秒确认工具栏不再周期性闪 X；快速新建不闪，长操作约 0.5 秒后才出现取消按钮。125% / 150% 下 rundll32 Unaware 仍会拒绝并提示顶层分组模式（有意保留的安全边界），请确认窗口保持独立、可分离。
-- 0.8.0 / 0.7.0 的应用 / 加入 / 分离 / 收藏旧菜单命名已被当前未发布优化替代，不按历史命名验收；仍请验证加入长标题、快捷键对齐及管理弹窗的打开 / 编辑 / 保存 / 取消。
+- 0.8.0 / 0.7.0 的应用 / 加入 / 分离 / 收藏旧菜单命名已被 0.11.0 菜单优化替代，不按历史命名验收；仍请验证加入长标题、快捷键对齐及管理弹窗的打开 / 编辑 / 保存 / 取消。
 - 0.7.0 弹窗 1px 边框、活动标签关闭后聚焦左邻、标签悬停 × 与目录 Tooltip 仍待真机反馈；X / Alt+F4 关闭标签窗口、未关完保留宿主的安全语义不变。
 - 0.7.0 修复：重启后新建的 ShellBrowserWindow 由注册的 rundll32 宿主托管时，恢复 / 加入 / 关闭按精确身份接管；需下次开机出现同场景时用 0.7.0 包实测“恢复上次会话”，并在 host.log 查看 `Creation inspect; ... image=...` 确认实际宿主。
 - 0.6.4 已发布：中键 / Ctrl+W 关闭、右键菜单快捷键、工具栏分组与图标、`+` 跟随最后一个标签、弹窗无边框自定义标题栏与小圆角；可从 GitHub Release 下载，或退出旧宿主后用本地 `dist/release/unpack` 刷新版本实测。
