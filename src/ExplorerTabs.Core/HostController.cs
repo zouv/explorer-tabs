@@ -66,7 +66,7 @@ namespace ExplorerTabs.Core
             }
         }
 
-        public void Activate(WindowSession next, Rectangle bounds, bool raise = true)
+        public void Activate(WindowSession next, Rectangle bounds, bool raise = true, bool visible = true)
         {
             RequireSession(next);
             if (next.State != SessionState.Attached)
@@ -76,9 +76,9 @@ namespace ExplorerTabs.Core
             var previous = Active;
             try
             {
-                windows.Layout(next.Snapshot, bounds);
+                if (visible) windows.Layout(next.Snapshot, bounds);
                 // Show before hiding the old window to avoid an intentional blank content frame.
-                windows.Show(next.Snapshot, true, raise);
+                windows.Show(next.Snapshot, visible, visible && raise);
                 if (previous != null && previous != next && windows.Matches(previous.Identity))
                     windows.Show(previous.Snapshot, false, false);
             }
@@ -93,7 +93,7 @@ namespace ExplorerTabs.Core
                 try
                 {
                     if (previous != null && windows.Matches(previous.Identity))
-                        windows.Show(previous.Snapshot, true, raise);
+                        windows.Show(previous.Snapshot, visible, visible && raise);
                 }
                 catch (Exception error) { rollbackErrors.Add(error); }
                 if (rollbackErrors.Count > 0)
@@ -222,11 +222,15 @@ namespace ExplorerTabs.Core
             return errors;
         }
 
-        public IReadOnlyList<string> PruneLost()
+        public IReadOnlyList<string> PruneLost() => PruneTargets(sessions.ToArray());
+
+        // Fast close confirmation checks only explicit managed targets, never discovers windows.
+        public IReadOnlyList<string> PruneTargets(IEnumerable<WindowSession> targets)
         {
             var errors = new List<string>();
-            foreach (var session in sessions.ToArray())
+            foreach (var session in targets.ToArray())
             {
+                RequireSession(session);
                 if (session.State == SessionState.Lost || !windows.Matches(session.Identity))
                 {
                     session.State = SessionState.Lost;

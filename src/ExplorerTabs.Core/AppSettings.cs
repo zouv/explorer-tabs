@@ -21,12 +21,13 @@ namespace ExplorerTabs.Core
         [DataMember] public int MaximumTabRows { get; set; } = 3;
         [DataMember] public bool RememberSession { get; set; } = true;
         [DataMember(EmitDefaultValue = false)] public string? GlobalHotkey { get; set; }
+        [DataMember(EmitDefaultValue = false)] public bool HideToTrayOnGlobalHotkey { get; set; }
         [DataMember] public List<HostShortcut> KeyBindings { get; set; } = HostShortcutCatalog.Defaults();
         [OnDeserializing] private void Defaults(StreamingContext context)
-        { Version = 1; Mode = HostingMode.Embedded; ShortcutsEnabled = true; NewTabDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); MaximumTabRows = 3; RememberSession = true; GlobalHotkey = null; KeyBindings = HostShortcutCatalog.Defaults(); }
+        { Version = 1; Mode = HostingMode.Embedded; ShortcutsEnabled = true; NewTabDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); MaximumTabRows = 3; RememberSession = true; GlobalHotkey = null; HideToTrayOnGlobalHotkey = false; KeyBindings = HostShortcutCatalog.Defaults(); }
         public AppSettings Copy() => new AppSettings { Version = Version, Mode = Mode, ShortcutsEnabled = ShortcutsEnabled,
             NewTabDirectory = NewTabDirectory, Bounds = Bounds, Maximized = Maximized, WrapTabs = WrapTabs, MaximumTabRows = MaximumTabRows,
-            RememberSession = RememberSession, GlobalHotkey = GlobalHotkey, KeyBindings = KeyBindings.Select(k => k.Copy()).ToList() };
+            RememberSession = RememberSession, GlobalHotkey = GlobalHotkey, HideToTrayOnGlobalHotkey = HideToTrayOnGlobalHotkey, KeyBindings = KeyBindings.Select(k => k.Copy()).ToList() };
     }
     public interface IAppSettingsStore
     {

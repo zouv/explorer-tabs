@@ -22,6 +22,7 @@ namespace ExplorerTabs.App
         private bool adjusting;
         private int maxRows = 3;
         private Func<WindowSession, string?>? directoryLookup;
+        private readonly HashSet<WindowSession> closeReading = new HashSet<WindowSession>();
         private const int MinimumTabWidth = 110, MaximumTabWidth = 280;
         // Native WS_HSCROLL / WS_VSCROLL bars are deliberately disabled: they are tall, follow
         // the system theme and can feed into each other (a transient horizontal bar shrinks the
@@ -81,44 +82,79 @@ namespace ExplorerTabs.App
             Func<WindowSession, ContextMenuStrip> createMenu,
             Func<WindowSession, string?>? directoryLookup = null)
         {
-            CancelPointer();
+            var existing = Controls.OfType<TabButton>().Where(b => b.Session != null).ToArray();
+            if (!existing.Select(b => b.Session).SequenceEqual(sessions)) CancelPointer();
             this.directoryLookup = directoryLookup;
             SuspendLayout();
             try
             {
-                tips.RemoveAll();
-                foreach (Control control in Controls.Cast<Control>().Where(c => c is TabButton).ToArray())
+                var bySession = existing.ToDictionary(b => b.Session!);
+                foreach (var button in existing.Where(b => !sessions.Contains(b.Session!)))
                 {
-                    var menu = control.ContextMenuStrip;
-                    Controls.Remove(control);
-                    control.Dispose();
-                    menu?.Dispose();
+                    tips.SetToolTip(button, null);
+                    var menu = button.ContextMenuStrip;
+                    Controls.Remove(button); button.Dispose(); menu?.Dispose(); closeReading.Remove(button.Session!);
                 }
+                int index = 0;
                 foreach (var session in sessions)
                 {
-                    var button = new TabButton(this, session)
+                    if (!bySession.TryGetValue(session, out var button))
                     {
-                        Text = (session.State == SessionState.Attached ? "" : "⚠ ") + session.DisplayTitle,
-                        Height = Pixels(32), Margin = new Padding(Pixels(2), 0, Pixels(2), 0),
-                        IsActive = active == session, FlatStyle = FlatStyle.Flat, AutoEllipsis = true,
-                        UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 6, 0),
-                        BackColor = active == session ? HostTheme.Canvas : HostTheme.Chrome,
-                        AccessibleName = session.DisplayTitle,
-                        AccessibleDescription = "右键管理；悬停显示关闭按钮；中键关闭 Explorer。"
-                    };
-                    button.FlatAppearance.BorderSize = active == session ? 1 : 0;
-                    button.FlatAppearance.BorderColor = Color.FromArgb(74, 127, 202);
-                    button.ContextMenuStrip = createMenu(session);
+                        button = new TabButton(this, session);
+                        Controls.Add(button);
+                    }
+                    ConfigureButton(button, active == session);
+                    button.Text = (session.State == SessionState.Attached ? "" : "⚠ ") + session.DisplayTitle +
+                        (session.CloseRequestedUtc != null || closeReading.Contains(session) ? " · 关闭中…" : "");
+                    button.AccessibleName = button.Text;
+                    button.ContextMenuStrip = button.ContextMenuStrip ?? createMenu(session);
                     tips.SetToolTip(button, TooltipFor(session, directoryLookup?.Invoke(session)));
                     button.Width = MeasureTabWidth(button);
-                    Controls.Add(button);
+                    Controls.SetChildIndex(button, index++);
                 }
+                foreach (var pending in Controls.OfType<TabButton>().Where(b => b.Session == null).ToArray())
+                    Controls.SetChildIndex(pending, index++);
                 if (trailing != null && Controls.Contains(trailing)) Controls.SetChildIndex(trailing, Controls.Count - 1);
-                // UpdateRows measures every tab and positions it before the new scroll extent
-                // is applied, so a transient old extent can never resurrect a stale scrollbar.
             }
-            finally { ResumeLayout(false); UpdateRows(); }
+            finally { ResumeLayout(false); UpdateRows(); Invalidate(); }
         }
+
+        private void ConfigureButton(TabButton button, bool active)
+        {
+            button.Height = Pixels(32); button.Margin = new Padding(Pixels(2), 0, Pixels(2), 0);
+            button.IsActive = active; button.FlatStyle = FlatStyle.Flat; button.AutoEllipsis = true;
+            button.UseMnemonic = false; button.TextAlign = ContentAlignment.MiddleLeft; button.Padding = new Padding(10, 0, 6, 0);
+            button.BackColor = active ? HostTheme.Canvas : HostTheme.Chrome;
+            button.AccessibleDescription = button.Session == null ? "后台创建中，可使用工具栏取消。" : "右键管理；悬停显示关闭按钮；中键关闭标签及对应的 Explorer 窗口。";
+            button.FlatAppearance.BorderSize = active ? 1 : 0;
+            button.FlatAppearance.BorderColor = Color.FromArgb(74, 127, 202);
+            button.Invalidate();
+        }
+
+        public void ShowPendingCreation(Guid requestId)
+        {
+            var button = new TabButton(this, null) { PendingRequestId = requestId, Text = "正在打开…", Enabled = false };
+            ConfigureButton(button, false); button.AccessibleName = button.Text; button.Width = MeasureTabWidth(button);
+            Controls.Add(button);
+            if (trailing != null && Controls.Contains(trailing)) Controls.SetChildIndex(trailing, Controls.Count - 1);
+            UpdateRows();
+        }
+
+        public void CompletePendingCreation(Guid requestId, WindowSession session)
+        {
+            var button = Controls.OfType<TabButton>().FirstOrDefault(b => b.PendingRequestId == requestId);
+            if (button != null) button.BindSession(session);
+        }
+
+        public void RemovePendingCreation(Guid requestId)
+        {
+            var button = Controls.OfType<TabButton>().FirstOrDefault(b => b.PendingRequestId == requestId);
+            if (button == null) return;
+            Controls.Remove(button); button.Dispose(); UpdateRows();
+        }
+
+        public void SetCloseReading(WindowSession session, bool reading)
+        { if (reading) closeReading.Add(session); else closeReading.Remove(session); }
 
         /// <summary>Keeps a non-tab action (new tab) flowing directly after the last tab.</summary>
         public void SetTrailingControl(Control control)
@@ -454,7 +490,7 @@ namespace ExplorerTabs.App
         internal void BeginPointer(TabButton button, MouseButtons buttons, Point point)
         {
             CancelPointer();
-            if (buttons != MouseButtons.Left) return;
+            if (buttons != MouseButtons.Left || button.Session == null) return;
             source = button;
             origin = pointer = point;
             dragging = false;
@@ -482,7 +518,7 @@ namespace ExplorerTabs.App
             {
                 pointer = point;
                 UpdateInsertion();
-                move = new TabMove(button.Session, insertion);
+                if (button.Session != null) move = new TabMove(button.Session, insertion);
             }
             CancelPointer();
             return move;
@@ -504,7 +540,7 @@ namespace ExplorerTabs.App
             session.DisplayTitle + "\nExplorer：" + session.Title + "\n目录：" +
             (string.IsNullOrWhiteSpace(directory) ? "未缓存" : FolderTarget.Display(directory!));
         internal void RefreshTip(TabButton button) =>
-            tips.SetToolTip(button, TooltipFor(button.Session, directoryLookup?.Invoke(button.Session)));
+            tips.SetToolTip(button, button.Session == null ? "后台创建中" : TooltipFor(button.Session, directoryLookup?.Invoke(button.Session)));
         private void Queue(Action action)
         {
             if (IsDisposed || !IsHandleCreated) return;
@@ -514,7 +550,7 @@ namespace ExplorerTabs.App
         internal void Select(WindowSession session) => Selected?.Invoke(session);
         internal void Close(WindowSession session) => MiddleClose?.Invoke(session);
 
-        private TabButton[] Remaining() => Controls.OfType<TabButton>().Where(b => b != source).ToArray();
+        private TabButton[] Remaining() => Controls.OfType<TabButton>().Where(b => b != source && b.Session != null).ToArray();
         private void UpdateInsertion()
         {
             var remaining = Remaining();
@@ -603,12 +639,14 @@ namespace ExplorerTabs.App
             private readonly TabStrip strip;
             private bool suppressClick;
             private bool releasingMouse;
-            public WindowSession Session { get; }
+            public WindowSession? Session { get; private set; }
+            public Guid? PendingRequestId { get; set; }
+            public void BindSession(WindowSession session) { Session = session; PendingRequestId = null; Enabled = true; }
             public bool IsActive { get; set; }
             private bool hovered, closeHovered, closePressed;
-            public TabButton(TabStrip strip, WindowSession session)
+            public TabButton(TabStrip strip, WindowSession? session)
             { this.strip = strip; Session = session; SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true); }
-            private bool ShowCloseButton => hovered || closePressed;
+            private bool ShowCloseButton => Session != null && Session.CloseRequestedUtc == null && !strip.closeReading.Contains(Session) && (hovered || closePressed);
             internal Rectangle CloseButtonBounds
             {
                 get
@@ -618,7 +656,7 @@ namespace ExplorerTabs.App
                 }
             }
             internal bool HitClose(Point point) =>
-                Session.State == SessionState.Attached && ShowCloseButton && CloseButtonBounds.Contains(point);
+                Session?.State == SessionState.Attached && ShowCloseButton && CloseButtonBounds.Contains(point);
             protected override void OnMouseEnter(EventArgs e)
             { hovered = true; strip.RefreshTip(this); Invalidate(); base.OnMouseEnter(e); }
             protected override void OnMouseLeave(EventArgs e)
@@ -677,21 +715,24 @@ namespace ExplorerTabs.App
                     suppressClick = true; // a press on the close glyph can never become a tab selection
                     Invalidate();
                     base.OnMouseUp(e);
-                    if (close) strip.Queue(() => strip.Close(Session));
+                    var closeTarget = Session;
+                    if (close && closeTarget != null) strip.Queue(() => strip.Close(closeTarget));
                     return;
                 }
                 suppressClick = suppressClick || strip.IsDragging(this);
                 var move = strip.EndPointer(this, e.Button, StripPoint(e.Location));
                 base.OnMouseUp(e);
-                if (e.Button == MouseButtons.Middle) strip.Queue(() => strip.Close(Session));
+                var target = Session;
+                if (e.Button == MouseButtons.Middle && target != null) strip.Queue(() => strip.Close(target));
                 else if (move != null) strip.Queue(() => strip.PublishMove(move));
             }
             protected override void OnClick(EventArgs e)
             {
                 // WinForms may fire Click BEFORE MouseUp; checking the live gesture is essential.
                 if (suppressClick || closePressed || strip.IsDragging(this) || (e is MouseEventArgs mouse && mouse.Button != MouseButtons.Left)) return;
+                var target = Session; if (target == null) return;
                 base.OnClick(e);
-                strip.Queue(() => strip.Select(Session));
+                strip.Queue(() => strip.Select(target));
             }
             protected override void OnMouseCaptureChanged(EventArgs e)
             {

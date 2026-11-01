@@ -9,22 +9,79 @@ namespace ExplorerTabs.App
 {
     internal sealed partial class MainForm
     {
+        private readonly System.Windows.Forms.Timer closeMonitor = new System.Windows.Forms.Timer { Interval = 75 };
+
         private async Task CloseTabAsync(WindowSession session)
         {
             if (closing || exitPreparing || creation != null || !controller.Sessions.Contains(session) || session.State != SessionState.Attached || session.CloseRequestedUtc != null || workspaceOperation != null || closeReading.ContainsKey(session)) return;
-            var token = new CancellationTokenSource(1200); closeReading.Add(session, token);
+            var token = new CancellationTokenSource(); closeReading.Add(session, token);
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            tabs.SetCloseReading(session, true); RefreshTabs();
             try
             {
                 WorkspaceTab? reopen = null;
-                try { reopen = new WorkspaceTab { Directory = await ReadTabDirectoryAsync(session, token.Token), Alias = session.CustomTitle }; }
+                try
+                {
+                    var read = ReadTabDirectoryAsync(session, token.Token);
+                    if (await Task.WhenAny(read, Task.Delay(150)) == read)
+                        reopen = new WorkspaceTab { Directory = await read, Alias = session.CustomTitle };
+                    else
+                    {
+                        token.Cancel(); _ = ObserveCloseReadAsync(read);
+                        log.Write("Close: directory read exceeded 150ms; no stale cached directory added to reopen stack.");
+                    }
+                }
                 catch (Exception error) { log.Write("Close: reopen directory unavailable; still close only explicit identity", error); }
                 if (closing || IsDisposed || exitPreparing || workspaceOperation != null || !controller.Sessions.Contains(session)) return;
                 controller.RequestClose(session); if (reopen != null) pendingClosed[session] = reopen;
-                workspaceTouched = true; log.Write($"Close requested HWND=0x{session.Identity.Handle:X}; journal retained until disappearance; no detach/process kill");
-                RefreshTabs(); status.Text = "已向目标 Explorer 请求关闭，等待窗口消失；不强制结束进程。";
+                workspaceTouched = true;
+                log.Write($"Close requested HWND=0x{session.Identity.Handle:X}; elapsedMs={elapsed.ElapsedMilliseconds}; journal retained until disappearance; no detach/process kill");
+                // Switch content now, but retain the closing tab/journal until identity disappearance.
+                if (controller.Active == session)
+                {
+                    var available = controller.Sessions.Where(s => s != session && s.State == SessionState.Attached && s.CloseRequestedUtc == null).ToArray();
+                    var next = TabManagementPolicy.CloseSuccessor(controller.Sessions, session, session, available);
+                    if (next != null)
+                        try { controller.Activate(next, CurrentBounds(), CanPresentExplorer, CanPresentExplorer); }
+                        catch (Exception error) { log.Write("Close successor activation failed; closing session retained", error); }
+                }
+                closeMonitor.Start();
+                status.Text = "已请求关闭；正在快速确认目标窗口，不强制结束进程。";
             }
-            finally { closeReading.Remove(session); token.Dispose(); }
+            finally
+            {
+                closeReading.Remove(session); token.Dispose();
+                if (!tabs.IsDisposed) tabs.SetCloseReading(session, false);
+                if (!closing && !IsDisposed) RefreshTabs();
+            }
         }
+
+        private async Task ObserveCloseReadAsync(Task<string> read)
+        { try { await read; } catch (Exception error) { log.Write("Close: late directory read discarded", error); } }
+
+        private void PollClosingWindows()
+        {
+            if (closing || disposingUi || refreshing || modalDepth > 0 || tabs.IsInteracting) return;
+            var targets = controller.Sessions.Where(s => s.CloseRequestedUtc != null).ToArray();
+            if (targets.Length == 0) { closeMonitor.Stop(); return; }
+            try
+            {
+                var before = controller.Sessions.ToArray(); var active = controller.Active;
+                foreach (string error in controller.PruneTargets(targets)) log.Write("Fast close prune failed: " + error);
+                foreach (var target in targets.Where(s => !controller.Sessions.Contains(s)))
+                    log.Write($"Close confirmed HWND=0x{target.Identity.Handle:X}; elapsedMs={(DateTime.UtcNow - target.CloseRequestedUtc!.Value).TotalMilliseconds:F0}");
+                CompleteClosedTabs(targets);
+                string closeStatus = status.Text;
+                bool refused = targets.Any(s => s.CloseRequestedUtc == null);
+                var preferred = active != null && controller.Active == null ? TabManagementPolicy.CloseSuccessor(before, active, active, controller.Sessions) : null;
+                EnsureActive(preferred: preferred);
+                if (!before.SequenceEqual(controller.Sessions) || targets.Any(s => s.CloseRequestedUtc == null)) RefreshTabs();
+                if (refused) status.Text = closeStatus;
+                if (!controller.Sessions.Any(s => s.CloseRequestedUtc != null)) closeMonitor.Stop();
+            }
+            catch (Exception error) { log.Write("Fast close confirmation failed; journal retained", error); }
+        }
+
         private void CompleteClosedTabs(IEnumerable<WindowSession> before)
         {
             foreach (var session in before)
@@ -50,7 +107,7 @@ namespace ExplorerTabs.App
         {
             if (closedTabs.Count == 0 || workspaceOperation != null) return;
             var entry = closedTabs.Peek(); int count = controller.Sessions.Count;
-            await OpenWorkspaceAsync(new SavedWorkspace { Name = "刚关闭的目录", Tabs = new List<WorkspaceTab> { entry.Copy() } });
+            await OpenWorkspaceAsync(new SavedWorkspace { Name = "关闭的标签", Tabs = new List<WorkspaceTab> { entry.Copy() } });
             if (controller.Sessions.Count > count && closedTabs.Count > 0 && closedTabs.Peek() == entry) closedTabs.Pop();
         }
         private async Task ShowTabPickerAsync()
@@ -70,21 +127,54 @@ namespace ExplorerTabs.App
             if (IsDisposed || closing || exitPreparing) return;
             var entries = controller.Sessions.Where(s => s.State == SessionState.Attached).Select((s, i) => new PickerEntry((i + 1) + "  " + s.DisplayTitle, directoryCache.TryGetValue(s, out var path) ? path : s.Title, s)).ToArray();
             WindowSession? chosen;
-            using (EnterModal()) using (var picker = new QuickPickerDialog("搜索标签 · Ctrl+P", entries)) { if (picker.ShowDialog(this) != DialogResult.OK) return; chosen = picker.SelectedValue as WindowSession; }
+            using (EnterModal()) using (var picker = new QuickPickerDialog("搜索标签", entries)) { if (picker.ShowDialog(this) != DialogResult.OK) return; chosen = picker.SelectedValue as WindowSession; }
             if (chosen != null && controller.Sessions.Contains(chosen)) { SelectTab(chosen); NativeWindowApi.FocusAfterShortcut(chosen.Snapshot); }
+        }
+        private bool CanExecuteMenuCommand(HostCommand command)
+        {
+            if (!MenuIdle) return false;
+            switch (command)
+            {
+                case HostCommand.CloseTab: return CanUseTab(controller.Active);
+                case HostCommand.DuplicateTab: return CanUseTab(controller.Active) && controller.Sessions.Count < 100;
+                case HostCommand.RenameTab: return CanUseTab(controller.Active);
+                case HostCommand.ReopenTab: return closedTabs.Count > 0 && controller.Sessions.Count < 100;
+                case HostCommand.SaveSession: return CanCaptureWorkspace;
+                case HostCommand.NewTab: return controller.Sessions.Count < 100;
+                case HostCommand.SearchTabs: return controller.Sessions.Any(s => s.State == SessionState.Attached);
+                default: return true;
+            }
+        }
+        private IReadOnlyList<PickerEntry> CreateCommandEntries()
+        {
+            var entries = new List<PickerEntry>();
+            foreach (var command in new[] { HostCommand.NewTab, HostCommand.CloseTab, HostCommand.SearchTabs, HostCommand.ReopenTab, HostCommand.DuplicateTab, HostCommand.RenameTab, HostCommand.SaveSession, HostCommand.Settings })
+                if (CanExecuteMenuCommand(command)) entries.Add(new PickerEntry(HostShortcutCatalog.Name(command), ShortcutChord(command), command));
+            foreach (var record in library.Favorites)
+            {
+                var favorite = record.Copy();
+                if (MenuIdle && controller.Sessions.Count < 100)
+                    entries.Add(new PickerEntry("打开收藏目录 · " + favorite.Name, FolderTarget.Display(favorite.Directory), favorite));
+            }
+            foreach (var record in library.Groups)
+            {
+                var group = record.Copy();
+                if (CanOpenWorkspace(group)) entries.Add(new PickerEntry("追加打开标签组 · " + group.Name, group.Tabs.Count + " 个标签", group));
+            }
+            if (MenuIdle && libraryStore != null)
+                entries.Add(new PickerEntry("管理收藏与标签组…", "重命名、移除收藏或删除标签组，不关闭标签", new Action(ShowLibraryManager)));
+            return entries;
         }
         private void ShowCommandPicker()
         {
-            var entries = new List<PickerEntry>();
-            foreach (var c in new[] { HostCommand.NewTab, HostCommand.CloseTab, HostCommand.SearchTabs, HostCommand.ReopenTab, HostCommand.DuplicateTab, HostCommand.RenameTab, HostCommand.SaveSession, HostCommand.Settings })
-                entries.Add(new PickerEntry(HostShortcutCatalog.Name(c), settings.KeyBindings.First(b => b.Command == c).Chord, c));
-            foreach (var favorite in library.Favorites) entries.Add(new PickerEntry("打开常用目录 · " + favorite.Name, favorite.Directory, favorite));
-            foreach (var group in library.Groups) entries.Add(new PickerEntry("打开标签组 · " + group.Name, group.Tabs.Count + " 个目录", group));
+            if (!MenuIdle) return;
+            var entries = CreateCommandEntries();
             object? chosen;
-            using (EnterModal()) using (var picker = new QuickPickerDialog("命令面板 · Ctrl+Shift+P", entries)) { if (picker.ShowDialog(this) != DialogResult.OK) return; chosen = picker.SelectedValue; }
-            if (chosen is HostCommand command) QueueUi(() => ExecuteCommandAsync(command));
+            using (EnterModal()) using (var picker = new QuickPickerDialog("命令面板", entries)) { if (picker.ShowDialog(this) != DialogResult.OK) return; chosen = picker.SelectedValue; }
+            if (chosen is HostCommand command && CanExecuteMenuCommand(command)) QueueUi(() => ExecuteCommandAsync(command));
             else if (chosen is FolderBookmark f) QueueUi(() => OpenWorkspaceAsync(new SavedWorkspace { Name = f.Name, Tabs = new List<WorkspaceTab> { new WorkspaceTab { Directory = f.Directory } } }));
             else if (chosen is SavedWorkspace group) QueueUi(() => OpenWorkspaceAsync(group.Copy()));
+            else if (chosen is Action action) QueueMenuAction(action);
         }
         private void QueueCommand(HostCommand command)
         {

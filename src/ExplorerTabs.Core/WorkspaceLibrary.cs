@@ -49,7 +49,7 @@ namespace ExplorerTabs.Core
             var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (var favorite in library.Favorites)
             {
-                if (favorite == null || !ids.Add(favorite.Id) || !Guid.TryParseExact(favorite.Id, "N", out _)) throw new InvalidDataException("常用目录身份无效或重复。");
+                if (favorite == null || !ids.Add(favorite.Id) || !Guid.TryParseExact(favorite.Id, "N", out _)) throw new InvalidDataException("收藏目录身份无效或重复。");
                 TabManagementPolicy.NormalizeTitle(favorite.Name); FolderTarget.Normalize(favorite.Directory);
             }
             ids.Clear(); var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

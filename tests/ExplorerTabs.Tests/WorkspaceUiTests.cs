@@ -31,6 +31,7 @@ namespace ExplorerTabs.Tests
             var context = SynchronizationContext.Current; SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
             try
             {
+                WindowPreferenceUiTests(directory);
                 var api = new FakeWindows(); var closer = new TestCloser(); var host = new HostController(api, new FakeStore(), closer); var service = new WorkspaceService(); var store = new WorkspaceStore();
                 var one = Add(host, 1); var two = Add(host, 2); host.RenameTab(one, "资料 & 开发"); host.Activate(two, Bounds);
                 using (var form = WorkspaceForm(host, service, directory, store))
@@ -106,7 +107,9 @@ namespace ExplorerTabs.Tests
                 var closingForm = WorkspaceForm(closeHost, closeService, directory, new WorkspaceStore());
                 var lateClose = WorkspaceTask(closingForm, "CloseTabAsync", closeTarget); closingForm.Dispose(); closeService.FinishRead(); PumpTask(lateClose);
                 Check(disposeCloser.Calls.Count == 0 && closeHost.Sessions.Count == 1, "dispose cancels directory capture and never sends late close");
+                ResponsivenessUiTests(directory);
                 MenuLifetimeTests(directory);
+                MenuConsistencyTests(directory);
                 LayoutAndDialogTests(directory);
                 HoverCloseTest(directory);
                 CloseFocusTests(directory);
@@ -202,7 +205,7 @@ namespace ExplorerTabs.Tests
                 Check(menu.IsDisposed && UiField<int>(form, "modalDepth") == 0 && UiField<Dictionary<ContextMenuStrip, Action>>(form, "managedMenuCleanups").Count == 0, "host Dispose cleans open/pending menus even if posted callback never runs: " + closeFirst);
                 Check(!ran && api.Events.Count == beforeDispose, "Dispose skips pending menu commands and never re-shows fake Explorer: " + closeFirst);
             }
-            foreach (var command in new[] { "恢复默认名称", "分离为独立窗口" })
+            foreach (var command in new[] { "恢复默认名称", "分离此标签" })
             {
                 var host = new HostController(new FakeWindows(), new FakeStore()); var first = Add(host, 1); Add(host, 2); host.RenameTab(first, "Alias");
                 using (var form = WorkspaceForm(host, new WorkspaceService(), directory, new WorkspaceStore()))
@@ -215,7 +218,7 @@ namespace ExplorerTabs.Tests
                     Check(menu.Handle != IntPtr.Zero && !menu.IsDisposed, "tab menu handle survives Closed before queued mutation: " + command);
                     Application.DoEvents();
                     bool result = command == "恢复默认名称" ? first.CustomTitle == null : !host.Sessions.Contains(first);
-                    Check(result && menu.IsDisposed && UiField<int>(form, "modalDepth") == 0, "queued tab mutation completes and safely replaces old menu: " + command);
+                    Check(result && menu.IsDisposed == (command == "分离此标签") && UiField<int>(form, "modalDepth") == 0, "queued tab mutation reuses surviving menu and disposes removed tab menu: " + command);
                 }
             }
         }
@@ -335,14 +338,14 @@ namespace ExplorerTabs.Tests
             {
                 using (var menu = (ContextMenuStrip)UiCall(form, "CreateDetachMenu")!)
                     Check(menu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).SequenceEqual(
-                        new[] { "关闭当前窗口", "分离当前窗口", "分离所有窗口", "关闭应用并分离所有窗口" }),
-                        "detach menu uses window terminology and explains closing the app by detaching");
+                        new[] { "分离当前标签", "分离所有标签", "退出并保留窗口" }),
+                        "detach menu contains only detach actions and retain-window exit");
                 using (var menu = (ContextMenuStrip)UiCall(form, "CreateLibraryMenu")!)
                 {
                     var items = menu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
-                    Check(items.Take(3).SequenceEqual(new[] { "收藏当前目录…", "收藏其他目录…", "保存当前标签组" }),
+                    Check(items.Take(3).SequenceEqual(new[] { "收藏当前目录…", "收藏其他目录…", "保存当前标签组…" }),
                         "favorites menu renames its save commands");
-                    Check(items.Last() == "打开“收藏”管理界面" && menu.Items[menu.Items.Count - 2] is ToolStripSeparator,
+                    Check(items.Last() == "管理收藏与标签组…" && menu.Items[menu.Items.Count - 2] is ToolStripSeparator,
                         "favorites management entry stays at the bottom in its own group");
                 }
             }
@@ -372,6 +375,7 @@ namespace ExplorerTabs.Tests
                     content.Region != null && !content.Region.IsVisible(new PointF(1, content.Height - 1)),
                     "rounded corners clip the square title bar and content so the border ring stays visible");
                 Check(!UiField<CheckBox>(dialog, "wrap").Checked && !UiField<NumericUpDown>(dialog, "maximumRows").Enabled, "settings expose wrap off by default with row limit disabled");
+                Check(!UiField<CheckBox>(dialog, "hideToTrayOnGlobalHotkey").Checked, "global hotkey tray option defaults to unchecked");
                 var settingsDirectory = UiField<TextBox>(dialog, "directory");
                 UiField<Button>(dialog, "thisPcPreset").PerformClick();
                 Check(settingsDirectory.Text == "此电脑", "This PC preset selects the virtual target");
@@ -384,10 +388,11 @@ namespace ExplorerTabs.Tests
                 UiField<TextBox>(dialog, "globalHotkey").Text = "Ctrl+T"; ((Button)dialog.AcceptButton!).PerformClick();
                 Check(dialog.DialogResult == DialogResult.None && UiField<Label>(dialog, "error").Text.Contains("全局快捷键"),
                     "global hotkey conflicting with a host shortcut stays inline");
+                UiField<CheckBox>(dialog, "hideToTrayOnGlobalHotkey").Checked = true;
                 UiField<TextBox>(dialog, "globalHotkey").Text = "Ctrl+Alt+E"; ((Button)dialog.AcceptButton!).PerformClick();
                 var result = (AppSettings)settingsType.GetProperty("Result")!.GetValue(dialog)!;
                 Check(dialog.DialogResult == DialogResult.OK && result.WrapTabs && result.MaximumTabRows == 5 && result.KeyBindings[1].Chord == "" &&
-                    result.GlobalHotkey == "Ctrl+Alt+E", "settings apply wrap/row count, disabled key and global hotkey");
+                    result.GlobalHotkey == "Ctrl+Alt+E" && result.HideToTrayOnGlobalHotkey, "settings apply wrap/row count, disabled key, global hotkey and tray option");
             }
             var managerType = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.LibraryManagerDialog", true)!;
             var sampleLibrary = new WorkspaceLibrary
@@ -408,10 +413,10 @@ namespace ExplorerTabs.Tests
                 Check(!manager.ShowIcon && manager.Padding.All == 1 && HasWindowRegion(manager),
                     "favorites manager reuses the borderless rounded dialog chrome and 1px border ring");
                 var pages = manager.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<TabControl>().Single();
-                Check(pages.TabPages.Cast<TabPage>().Select(p => p.Text).SequenceEqual(new[] { "目录管理", "组管理" }),
+                Check(pages.TabPages.Cast<TabPage>().Select(p => p.Text).SequenceEqual(new[] { "收藏目录", "标签组" }),
                     "favorites manager separates folder management and group management");
                 var favoritesView = UiField<ListView>(manager, "favorites"); var groupsView = UiField<ListView>(manager, "groups");
-                Check(favoritesView.Items.Count == 2 && groupsView.Items.Count == 1 && favoritesView.Items[0].Text == "资料" && groupsView.Items[0].SubItems[1].Text == "2 个目录",
+                Check(favoritesView.Items.Count == 2 && groupsView.Items.Count == 1 && favoritesView.Items[0].Text == "资料" && groupsView.Items[0].SubItems[1].Text == "2 个标签",
                     "favorites manager lists saved directories and groups from the live library");
                 Check(!UiField<Button>(manager, "removeFavorite").Enabled && !UiField<Button>(manager, "openGroup").Enabled,
                     "management actions stay disabled until a row is selected");
@@ -420,10 +425,25 @@ namespace ExplorerTabs.Tests
                 UiField<Button>(manager, "removeFavorite").PerformClick();
                 Check(favoritesView.Items.Count == 1 && (bool)managerType.GetProperty("Dirty")!.GetValue(manager)!,
                     "removing a saved directory edits the working copy and marks it dirty");
+                Check(UiField<Label>(manager, "status").Text.Contains("打开条目会保存修改"),
+                    "dirty manager accurately describes that opening also commits edits");
                 UiField<Button>(manager, "save").PerformClick();
                 var edited = (WorkspaceLibrary)managerType.GetProperty("Result")!.GetValue(manager)!;
                 Check(manager.DialogResult == DialogResult.OK && edited.Favorites.Count == 1 && edited.Groups.Count == 1 && sampleLibrary.Favorites.Count == 2,
                     "saving returns the edited library and leaves the live library untouched");
+            }
+            using (var manager = (Form)Activator.CreateInstance(managerType, sampleLibrary)!)
+            {
+                MakeHidden(manager);
+                var favoritesView = UiField<ListView>(manager, "favorites");
+                favoritesView.Items[1].Selected = true;
+                UiField<Button>(manager, "removeFavorite").PerformClick();
+                favoritesView.Items[0].Selected = true;
+                UiField<Button>(manager, "openFavorite").PerformClick();
+                var edited = (WorkspaceLibrary)managerType.GetProperty("Result")!.GetValue(manager)!;
+                Check(manager.DialogResult == DialogResult.OK && (bool)managerType.GetProperty("Dirty")!.GetValue(manager)! &&
+                    edited.Favorites.Count == 1 && sampleLibrary.Favorites.Count == 2 && managerType.GetProperty("FavoriteToOpen")!.GetValue(manager) != null,
+                    "opening an edited library returns pending edits and target without changing live library");
             }
             using (var manager = (Form)Activator.CreateInstance(managerType, sampleLibrary)!)
             {
@@ -501,7 +521,7 @@ namespace ExplorerTabs.Tests
         { public WorkspaceLibrary Value = new WorkspaceLibrary(); public int Saves; public bool Fail; public WorkspaceLibrary? Read() => Value.Copy(); public void Save(WorkspaceLibrary library) { if (Fail) throw new IOException("fake disk error"); Saves++; Value = library.Copy(); } }
         private sealed class WorkspaceService : IExplorerTabService, IExplorerDirectoryService
         {
-            private bool busy; public bool IsBusy => busy; public bool IsReading => false; public bool HoldRead, HoldCreate; public long FailHandle, NextHandle = 1; public int Creates;
+            private bool busy; public bool IsBusy => busy; public bool Reading; public bool IsReading => Reading; public bool HoldRead, HoldCreate; public long FailHandle, NextHandle = 1; public int Creates;
             public readonly Dictionary<long, string> Paths = new Dictionary<long, string>(); public readonly List<string> CreatedPaths = new List<string>(); public readonly List<long[]> Exclusions = new List<long[]>();
             private TaskCompletionSource<string>? read; private TaskCompletionSource<CreatedExplorer>? create; private string heldPath = "", heldCreatePath = ""; private CancellationTokenRegistration registration;
             public Task<string> ReadDirectoryAsync(WindowIdentity identity, CancellationToken token)

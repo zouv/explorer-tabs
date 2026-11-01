@@ -9,16 +9,20 @@ $appOutput = Join-Path $root 'src\ExplorerTabs.App\bin'
 $distDir = Join-Path $root 'dist'
 $devDir = Join-Path $distDir 'dev'
 $releaseDir = Join-Path $distDir 'release'
-$stagingDir = Join-Path $root '.runtime\staging'
+. (Join-Path $PSScriptRoot 'PackageTransaction.ps1')
+$stagingRoot = Join-Path $root '.runtime\staging'
+$stagingDir = Assert-PackagePath (Join-Path $stagingRoot ('package-' + [Guid]::NewGuid().ToString('N'))) $root
+$finalDevDir = $devDir; $finalReleaseDir = $releaseDir
+$devDir = Join-Path $stagingDir 'dev'; $releaseDir = Join-Path $stagingDir 'release'
 
 # Version is single-sourced from Directory.Build.props (imported by every project).
 $version = (& dotnet msbuild $appProject -getProperty:Version -nologo 2>$null | Select-Object -Last 1)
 if ($null -ne $version) { $version = $version.Trim() }
-if ([string]::IsNullOrEmpty($version) -or $version -notmatch '^\d+\.\d+\.\d+') {
+if ([string]::IsNullOrEmpty($version) -or $version -notmatch '^\d+\.\d+\.\d+$') {
     throw "Cannot read <Version> from Directory.Build.props via $appProject."
 }
 
-$devUnpack = Join-Path $stagingDir "dev\ExplorerTabs_${version}_x64-unpack-debug"
+$devUnpack = Join-Path $stagingDir "debug-source\ExplorerTabs_${version}_x64-unpack-debug"
 $devLogs = Join-Path $devUnpack 'logs'
 $devZip = Join-Path $devDir "ExplorerTabs_${version}_x64-unpack-debug.zip"
 $relUnpack = Join-Path $releaseDir 'unpack'
@@ -73,10 +77,10 @@ Write-Host "  dev zip : $devZip"
 Write-Host "  unpack  : $relUnpack"
 Write-Host "  zip     : $relZip"
 
-# Only clear this package set. Historical dist/vX-release directories are kept.
-foreach ($path in @($devDir, $releaseDir, $stagingDir)) {
-    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
-}
+# Serialize builds/publication. Keep the common lock file (unlinking would race waiters).
+New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
+$packageLock = [IO.File]::Open((Join-Path $stagingRoot 'package.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+try {
 New-Item -ItemType Directory -Force -Path $devLogs, $relUnpack, $devDir, $releaseDir | Out-Null
 
 function Invoke-Build([string]$configuration, [string]$log) {
@@ -94,6 +98,10 @@ function Copy-AppFiles([string]$source, [string]$destination, [bool]$includeSymb
     foreach ($name in $names) {
         $file = Join-Path $source $name
         if (-not (Test-Path -LiteralPath $file)) { throw "Missing build output: $file" }
+        if ($name -eq 'ExplorerTabs.exe' -or $name -eq 'ExplorerTabs.Core.dll') {
+            $builtVersion = [Reflection.AssemblyName]::GetAssemblyName($file).Version.ToString(3)
+            if ($builtVersion -ne $version) { throw "Stale build version: $file ($builtVersion != $version)" }
+        }
         Copy-Item -LiteralPath $file -Destination (Join-Path $destination $name) -Force
     }
 }
@@ -180,7 +188,17 @@ New-Zip $devUnpack $devZip "ExplorerTabs_${version}_x64-unpack-debug"
 #    dist\release\unpack is the official runnable output and stays.
 Write-Host "[4/4] Creating release zip..."
 New-Zip $relUnpack $relZip ''
-Remove-Item -LiteralPath $stagingDir -Recurse -Force
+Test-PackageZip $devUnpack $devZip "ExplorerTabs_$($version)_x64-unpack-debug"
+Test-PackageZip $relUnpack $relZip ''
+New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+Publish-PackageSet $root $stagingDir $distDir
+# Both published successfully. Remove only this invocation's checked backup/source tree.
+$cleanupPath = Assert-PackagePath $stagingDir $root
+Remove-Item -LiteralPath $cleanupPath -Recurse -Force
+$devDir = $finalDevDir; $releaseDir = $finalReleaseDir
+$devZip = Join-Path $devDir "ExplorerTabs_$($version)_x64-unpack-debug.zip"
+$relUnpack = Join-Path $releaseDir 'unpack'
+$relZip = Join-Path $releaseDir "ExplorerTabs_$($version)_x64-unpack.zip"
 
 Write-Host ""
 Write-Host "Output files:"
@@ -192,3 +210,5 @@ Write-Host "[SUCCESS] Package complete (version $version)."
 Write-Host "  dev    : $devZip"
 Write-Host "  unpack : $relUnpack"
 Write-Host "  zip    : $relZip"
+
+} finally { $packageLock.Dispose() }

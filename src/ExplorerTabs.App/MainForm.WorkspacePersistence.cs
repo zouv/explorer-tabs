@@ -35,7 +35,7 @@ namespace ExplorerTabs.App
                 try
                 {
                     string path;
-                    using (var item = CancellationTokenSource.CreateLinkedTokenSource(token)) { item.CancelAfter(2500); path = await ReadTabDirectoryAsync(session, item.Token); }
+                    using (var item = CancellationTokenSource.CreateLinkedTokenSource(token)) { item.CancelAfter(WorkspaceCapturePolicy.ItemTimeoutMilliseconds); path = await ReadTabDirectoryAsync(session, item.Token); }
                     if (session == active) saved.ActiveIndex = saved.Tabs.Count;
                     saved.Tabs.Add(new WorkspaceTab { Directory = path, Alias = aliases[Array.IndexOf(sessions, session)] });
                 }
@@ -59,7 +59,7 @@ namespace ExplorerTabs.App
         private async Task SaveSessionAsync(bool automatic)
         {
             if (workspaceOperation != null || libraryStore == null || creation != null) return;
-            var operation = new CancellationTokenSource(automatic ? 7000 : 30000); workspaceOperation = operation; workspaceOperationSilent = automatic; SetCreationControls(false);
+            var operation = new CancellationTokenSource(WorkspaceCapturePolicy.TimeoutMilliseconds(controller.Sessions.Count, automatic, exitPreparing)); workspaceOperation = operation; workspaceOperationSilent = automatic; SetCreationControls(false);
             try
             {
                 var saved = await CaptureWorkspaceAsync(operation.Token);
@@ -78,7 +78,7 @@ namespace ExplorerTabs.App
         }
         private async Task SaveGroupAsync()
         {
-            if (workspaceOperation != null || creation != null) return;
+            if (!CanCaptureWorkspace) return;
             string? name = AskName("保存当前标签组", "我的工作空间"); if (name == null) return;
             var operation = new CancellationTokenSource(30000); workspaceOperation = operation; SetCreationControls(false);
             try

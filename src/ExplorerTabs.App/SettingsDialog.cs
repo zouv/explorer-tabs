@@ -20,6 +20,7 @@ namespace ExplorerTabs.App
         { ReadOnly = true, BorderStyle = BorderStyle.None, ShortcutsEnabled = false, Cursor = Cursors.Hand };
         private readonly Label error = new Label
         { Dock = DockStyle.Fill, ForeColor = Color.Firebrick, BackColor = Color.White, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+        private readonly ThemedCheckBox hideToTrayOnGlobalHotkey = new ThemedCheckBox("切后台时隐藏到系统托盘");
         private readonly Label globalHotkeyHint = new Label();
         private readonly Label directoryHint = new Label();
         private readonly DataGridView bindings = new DataGridView
@@ -51,6 +52,7 @@ namespace ExplorerTabs.App
             remember.Checked = current.RememberSession;
             directory.Text = FolderTarget.Display(current.NewTabDirectory);
             globalHotkey.Text = current.GlobalHotkey ?? "";
+            hideToTrayOnGlobalHotkey.Checked = current.HideToTrayOnGlobalHotkey;
             globalHotkey.Enter += (_, __) => { globalHotkeyHint.Text = "请按下新的组合键（Esc 清空，点击其它位置结束）。"; };
             globalHotkey.Leave += (_, __) => globalHotkeyHint.Text = "点击输入框后按下组合键（Ctrl / Alt / Shift + 字母、数字或 F1–F12）；Esc 清空停用。";
             styleHotkeyHint();
@@ -127,32 +129,37 @@ namespace ExplorerTabs.App
             // 快捷键
             var keys = Page();
             Row(keys, Section("全局快捷键"), 34);
-            Row(keys, Note("在任意程序前台按下组合键，可呼出或隐藏 ExplorerTabs。留空表示停用。"), 44);
+            Row(keys, Note("其他程序前台时呼出；ExplorerTabs 前台时切后台。留空表示停用。"), 44);
             var hotkeyRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = Color.White };
             hotkeyRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
             hotkeyRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             hotkeyRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));
-            hotkeyRow.Controls.Add(new Label { Text = "呼出 / 隐藏", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = HostTheme.Text }, 0, 0);
+            hotkeyRow.Controls.Add(new Label { Text = "呼出 / 切后台", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = HostTheme.Text }, 0, 0);
             hotkeyRow.Controls.Add(new FieldHost(globalHotkey) { Dock = DockStyle.Top }, 1, 0);
             var clearHotkey = new ActionButton("清除") { Dock = DockStyle.Top, Height = 30 };
             clearHotkey.Click += (_, __) => { globalHotkey.Text = ""; globalHotkey.Focus(); };
             hotkeyRow.Controls.Add(clearHotkey, 2, 0);
             Row(keys, hotkeyRow, 42);
             Row(keys, globalHotkeyHint, 40);
+            Row(keys, hideToTrayOnGlobalHotkey, 34);
+            Row(keys, new Label { Text = "默认不勾选：最小化并保留任务栏按钮。勾选后隐藏到系统托盘。",
+                ForeColor = HostTheme.MutedText, AutoSize = false }, 36);
             Row(keys, Section("宿主快捷键"), 34);
             var gridHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(1) };
             gridHost.Paint += (_, e) => { using (var pen = new Pen(HostTheme.FieldBorder)) e.Graphics.DrawRectangle(pen, 0, 0, gridHost.Width - 1, gridHost.Height - 1); };
             gridHost.Controls.Add(bindings);
             Row(keys, gridHost, 200);
             Row(keys, Note("点击右侧组合可修改；空白表示禁用。重复组合不能保存。\n" +
-                "Ctrl+P 列出标签，Ctrl+Shift+P 打开命令面板。\n默认保留 Explorer 的 F2 文件重命名。"), 58);
+                "可通过“搜索标签”查找已打开的标签，通过“命令面板”执行操作。\n默认保留 Explorer 的 F2 文件重命名。"), 58);
             var resetRow = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
             var reset = new ActionButton("恢复默认快捷键") { Dock = DockStyle.Right, Width = 140, Height = 30 };
             reset.Click += (_, __) => Fill(HostShortcutCatalog.Defaults());
             resetRow.Controls.Add(reset);
             Row(keys, resetRow, 34);
-            Spacer(keys);
-            pages.Keys = keys;
+            // Keep every row accessible on small screens and at higher DPI.
+            keys.Dock = DockStyle.Top; keys.AutoSize = true; keys.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            pages.Keys = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, AutoScroll = true };
+            pages.Keys.Controls.Add(keys);
 
             pages.Host.Controls.Add(pages.General); pages.Host.Controls.Add(pages.Tabs); pages.Host.Controls.Add(pages.Keys);
             pages.Tabs.Visible = false; pages.Keys.Visible = false;
@@ -302,6 +309,7 @@ namespace ExplorerTabs.App
                     if (!string.IsNullOrEmpty(issue)) throw new ArgumentException(issue);
                 }
                 result.GlobalHotkey = chord.Length == 0 ? null : chord;
+                result.HideToTrayOnGlobalHotkey = hideToTrayOnGlobalHotkey.Checked;
                 Result = result; DialogResult = DialogResult.OK;
             }
             catch (Exception issue) when (issue is ArgumentException || issue is InvalidDataException || issue is NotSupportedException || issue is PathTooLongException)

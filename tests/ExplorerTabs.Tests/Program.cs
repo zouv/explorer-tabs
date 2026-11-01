@@ -42,7 +42,7 @@ namespace ExplorerTabs.Tests
                 else if (args.Contains("--tab-ui-smoke")) TabUiSmoke();
                 else if (args.Contains("--cross-process-smoke")) { CrossProcessSmoke(); CrossProcessUnawareSmoke(); }
                 else if (args.Contains("--native-smoke")) NativeSmoke();
-                else { UnitTests(); DpiPolicyTests(); FeatureUnitTests(); DeferredCreationTests(); ShellInteropTests(); WorkspaceUnitTests(); BrandingUnitTests(); }
+                else { UnitTests(); DpiPolicyTests(); FeatureUnitTests(); DeferredCreationTests(); ShellInteropTests(); WorkspaceUnitTests(); ResponsivenessUnitTests(); BrandingUnitTests(); }
                 Console.WriteLine($"PASS: {count} checks. No existing Explorer window was modified.");
                 return 0;
             }
@@ -632,7 +632,7 @@ namespace ExplorerTabs.Tests
                 clickButton.GetType().GetMethod("OnClick", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(clickButton, new object[] { EventArgs.Empty });
                 Check(host.Active == second && !clickButton.IsDisposed, "tab selection is queued until the mouse message has completed");
                 Application.DoEvents();
-                Check(host.Active == third && clickButton.IsDisposed, "queued tab selection executes and safely rebuilds its controls");
+                Check(host.Active == third && !clickButton.IsDisposed && ButtonFor(third) == clickButton, "queued tab selection executes while retaining existing button HWND");
                 host.Activate(second, Bounds); Refresh(); Call("ResetScrollPosition");
                 api.Events.Clear(); int writes = store.Writes;
                 var button = ButtonFor(first);
@@ -643,6 +643,7 @@ namespace ExplorerTabs.Tests
                     "new-tab action stays directly after the last file tab");
                 Check(!button.UseMnemonic && button.AutoEllipsis, "long titles are ellipsized and ampersands are not accelerator markers");
                 Check(ButtonFor(second).BackColor != button.BackColor, "actual active tab uses selected background");
+                foreach (var current in host.Sessions) UiCall(form, "PopulateTabMenu", ButtonFor(current).ContextMenuStrip!, current);
                 Check(ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离右侧标签").Enabled &&
                     !ButtonFor(fourth).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离右侧标签").Enabled,
                     "last tab menu disables impossible right-detach action");
@@ -672,8 +673,8 @@ namespace ExplorerTabs.Tests
                 Call("PublishMove", move!);
                 Check(host.Sessions.SequenceEqual(new[] { second, first, third, fourth }) && host.Active == second,
                     "actual host receives drag request and reorders without switching active Explorer");
-                Check(api.Events.Count == 0 && store.Writes == writes && button.IsDisposed && oldMenu!.IsDisposed,
-                    "rebuilding reordered tab UI disposes old controls/menus without native mutations");
+                Check(api.Events.Count == 0 && store.Writes == writes && !button.IsDisposed && !oldMenu!.IsDisposed,
+                    "incremental reorder retains controls/menus without native mutations");
                 button = ButtonFor(first);
                 Call("BeginPointer", button, MouseButtons.Left, new Point(button.Left + 10, 15));
                 Call("MovePointer", button, new Point(-100, 15));
@@ -695,7 +696,7 @@ namespace ExplorerTabs.Tests
                 Check(api.Events.Contains("restore:2") && api.Events.Contains("restore:3") && api.Events.Contains("restore:4") &&
                     !api.Events.Contains("restore:1"), "batch UI routes selected targets through existing safe restoration, not close commands");
                 api.Events.Clear();
-                ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离全部标签").PerformClick();
+                ButtonFor(first).ContextMenuStrip!.Items.Cast<ToolStripItem>().Single(i => i.Text == "分离所有标签").PerformClick();
                 Application.DoEvents(); // Menu commands run after the click/close stack, not inline.
                 Check(host.Sessions.Count == 0 && TabCount() == 0 && strip.Controls.Cast<Control>().Single().AccessibleName == "新建标签" &&
                     api.Events.SequenceEqual(new[] { "restore:1" }),

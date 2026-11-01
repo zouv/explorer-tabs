@@ -7,7 +7,7 @@ using ExplorerTabs.Core;
 
 namespace ExplorerTabs.App
 {
-    /// <summary>“收藏”管理：目录与标签组的集中管理。
+    /// <summary>收藏与标签组管理：目录与标签组的集中管理。
     /// Edits stay in a private copy; the host validates and persists Result only after Save/Open.
     /// The dialog never navigates, closes or otherwise touches Explorer windows.</summary>
     internal sealed class LibraryManagerDialog : ShellDialog
@@ -18,8 +18,8 @@ namespace ExplorerTabs.App
         private readonly Label status = new Label();
         private readonly ActionButton openFavorite = new ActionButton("打开为新标签", true) { Width = 118, Height = 30 };
         private readonly ActionButton renameFavorite = new ActionButton("重命名…") { Width = 92, Height = 30 };
-        private readonly ActionButton removeFavorite = new ActionButton("移除") { Width = 82, Height = 30 };
-        private readonly ActionButton openGroup = new ActionButton("打开标签组", true) { Width = 112, Height = 30 };
+        private readonly ActionButton removeFavorite = new ActionButton("移除收藏") { Width = 82, Height = 30 };
+        private readonly ActionButton openGroup = new ActionButton("追加打开", true) { Width = 112, Height = 30 };
         private readonly ActionButton renameGroup = new ActionButton("重命名…") { Width = 92, Height = 30 };
         private readonly ActionButton removeGroup = new ActionButton("删除标签组") { Width = 112, Height = 30 };
         private readonly ActionButton save = new ActionButton("保存", true) { Width = 90, Height = 30 };
@@ -34,7 +34,7 @@ namespace ExplorerTabs.App
         {
             library = current.Copy();
             Result = current.Copy();
-            Text = "“收藏”管理 · 目录与标签组";
+            Text = "管理收藏与标签组";
             Font = new Font("Microsoft YaHei UI", 9F);
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false;
@@ -62,8 +62,8 @@ namespace ExplorerTabs.App
 
         private TabPage BuildFavoritesPage()
         {
-            var page = new TabPage("目录管理") { Padding = new Padding(12, 10, 12, 10), BackColor = Color.White };
-            ConfigureList(favorites, "常用目录");
+            var page = new TabPage("收藏目录") { Padding = new Padding(12, 10, 12, 10), BackColor = Color.White };
+            ConfigureList(favorites, "收藏目录");
             favorites.Columns.Add("名称", 220);
             favorites.Columns.Add("目录", 520);
             favorites.DoubleClick += (_, __) => OpenSelectedFavorite();
@@ -78,7 +78,7 @@ namespace ExplorerTabs.App
             var note = new Label
             {
                 Dock = DockStyle.Top, Height = 26, ForeColor = Color.FromArgb(91, 104, 123),
-                Text = "双击条目或点击“打开为新标签”可直接打开；修改在点击“保存”后生效。"
+                Text = "双击条目或点击“打开为新标签”可打开；如有修改，会一并保存。"
             };
             page.Controls.Add(favorites); page.Controls.Add(actions); page.Controls.Add(note);
             return page;
@@ -86,10 +86,10 @@ namespace ExplorerTabs.App
 
         private TabPage BuildGroupsPage()
         {
-            var page = new TabPage("组管理") { Padding = new Padding(12, 10, 12, 10), BackColor = Color.White };
+            var page = new TabPage("标签组") { Padding = new Padding(12, 10, 12, 10), BackColor = Color.White };
             ConfigureList(groups, "标签组");
             groups.Columns.Add("名称", 320);
-            groups.Columns.Add("目录数", 140);
+            groups.Columns.Add("标签数", 140);
             groups.DoubleClick += (_, __) => OpenSelectedGroup();
             groups.SelectedIndexChanged += (_, __) => UpdateGroupButtons();
             openGroup.Click += (_, __) => OpenSelectedGroup();
@@ -100,7 +100,7 @@ namespace ExplorerTabs.App
             var note = new Label
             {
                 Dock = DockStyle.Top, Height = 26, ForeColor = Color.FromArgb(91, 104, 123),
-                Text = "双击条目或点击“打开标签组”会追加为多个标签；删除不会关闭任何窗口。"
+                Text = "双击条目或点击“追加打开”会追加为多个标签；删除不会关闭任何窗口。"
             };
             page.Controls.Add(groups); page.Controls.Add(actions); page.Controls.Add(note);
             return page;
@@ -146,8 +146,8 @@ namespace ExplorerTabs.App
                 groups.Items.Clear();
                 foreach (var group in library.Groups)
                 {
-                    var item = new ListViewItem(group.Name) { Tag = group, ToolTipText = group.Name + " · " + group.Tabs.Count + " 个目录" };
-                    item.SubItems.Add(group.Tabs.Count + " 个目录");
+                    var item = new ListViewItem(group.Name) { Tag = group, ToolTipText = group.Name + " · " + group.Tabs.Count + " 个标签" };
+                    item.SubItems.Add(group.Tabs.Count + " 个标签");
                     groups.Items.Add(item);
                     if (group.Id == selectId) item.Selected = true;
                 }
@@ -169,7 +169,7 @@ namespace ExplorerTabs.App
         }
 
         private void UpdateStatus() =>
-            status.Text = Dirty ? "有未保存的修改；点击“保存”后生效。" : "双击条目可直接打开；修改在点击“保存”后生效。";
+            status.Text = Dirty ? "有未保存的修改；保存或打开条目会保存修改，取消则放弃。" : "双击条目可打开；保存或打开时提交修改，取消则放弃。";
 
         private void MarkDirty() { Dirty = true; UpdateStatus(); }
 

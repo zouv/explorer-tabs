@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$OutputDirectory = ".runtime\build\ExplorerTabs-dev",
     [switch]$NativeSmoke,
     [switch]$CrossProcessSmoke,
@@ -77,6 +77,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 $tests = Join-Path $root 'tests\ExplorerTabs.Tests\bin\Release\net48\ExplorerTabs.Tests.exe'
 & $tests
 if ($LASTEXITCODE -ne 0) { throw 'Unit checks failed.' }
+& (Join-Path $PSScriptRoot 'test-package.ps1')
+if (-not $?) { throw 'Isolated package transaction checks failed.' }
 if ($NativeSmoke) {
     & $tests --native-smoke
     if ($LASTEXITCODE -ne 0) { throw 'Native smoke failed.' }

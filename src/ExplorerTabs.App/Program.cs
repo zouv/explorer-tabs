@@ -83,7 +83,7 @@ namespace ExplorerTabs.App
                     catch (Exception error)
                     {
                         log.Write("Workspace invalid/unreadable; original preserved, persistence disabled", error); workspaceStore = null;
-                        MessageBox.Show("会话库无法读取，原文件保留且本次不自动覆盖。常用目录 / 会话保存暂不可用。\n请备份并检查 workspace.json 后重启。\n\n" + error.Message,
+                        MessageBox.Show("会话库无法读取，原文件保留且本次不自动覆盖。收藏 / 标签组 / 会话保存暂不可用。\n请备份并检查 workspace.json 后重启。\n\n" + error.Message,
                             "ExplorerTabs 会话库", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
                     form.ConfigureLibrary(workspaceStore, workspace);

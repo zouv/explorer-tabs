@@ -33,12 +33,12 @@ namespace ExplorerTabs.Core
         {
             switch (c)
             {
-                case HostCommand.NewTab: return "新建标签"; case HostCommand.CloseTab: return "关闭当前 Explorer";
-                case HostCommand.SearchTabs: return "搜索 / 列出标签"; case HostCommand.Commands: return "命令面板";
-                case HostCommand.ReopenTab: return "重新打开刚关闭的目录"; case HostCommand.DuplicateTab: return "复制当前标签目录";
+                case HostCommand.NewTab: return "新建标签"; case HostCommand.CloseTab: return "关闭标签";
+                case HostCommand.SearchTabs: return "搜索标签…"; case HostCommand.Commands: return "命令面板…";
+                case HostCommand.ReopenTab: return "重新打开关闭的标签"; case HostCommand.DuplicateTab: return "复制标签";
                 case HostCommand.NextTab: return "下一个标签"; case HostCommand.PreviousTab: return "上一个标签";
                 case HostCommand.NextPage: return "下一个标签（备用）"; case HostCommand.PreviousPage: return "上一个标签（备用）";
-                case HostCommand.Settings: return "打开设置"; case HostCommand.RenameTab: return "重命名当前标签";
+                case HostCommand.Settings: return "设置…"; case HostCommand.RenameTab: return "重命名标签…";
                 case HostCommand.SaveSession: return "保存当前会话"; case HostCommand.Tab9: return "跳到最后一个标签";
                 default: return "跳到第 " + ((int)c - (int)HostCommand.Tab1 + 1) + " 个标签";
             }

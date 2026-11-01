@@ -75,7 +75,7 @@ namespace ExplorerTabs.Tests
             Check(GlobalHotkeyDefinition.Conflicts("Ctrl+T", HostShortcutCatalog.Defaults()) &&
                 !GlobalHotkeyDefinition.Conflicts("Ctrl+Alt+E", HostShortcutCatalog.Defaults()),
                 "global hotkey duplicates host shortcuts are detected");
-            SettingsUnitTests(); CreationWorkflowTests(); CreationServiceTests();
+            SettingsUnitTests(); WindowPreferenceUnitTests(); CreationWorkflowTests(); CreationServiceTests();
         }
 
         private static void SettingsUnitTests()

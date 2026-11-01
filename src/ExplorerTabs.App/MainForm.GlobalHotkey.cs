@@ -27,12 +27,27 @@ namespace ExplorerTabs.App
         }
         internal void ToggleHostVisibility()
         {
-            if (closing || exitPreparing || IsDisposed) return;
-            if (Visible && WindowState != FormWindowState.Minimized) HideHostForHotkey();
-            else ShowHostFromHotkey();
+            if (closing || exitPreparing || IsDisposed || modalDepth > 0) return;
+            switch (GlobalHotkeyPolicy.Decide(Visible, WindowState == FormWindowState.Minimized,
+                TabKeyboardHook.IsTargetForeground(Handle, controller.Active), settings.HideToTrayOnGlobalHotkey))
+            {
+                case GlobalHotkeyAction.HideToTray: HideHostForHotkey(); break;
+                case GlobalHotkeyAction.MinimizeHost: MinimizeHostForHotkey(); break;
+                default: ShowHostFromHotkey(); break;
+            }
+        }
+        private void MinimizeHostForHotkey()
+        {
+            CaptureWindowPlacement(true);
+            try { controller.SetActiveVisible(false); } catch (Exception error) { log.Write("Minimize active window for hotkey failed", error); }
+            WindowState = FormWindowState.Minimized;
+            SyncShortcutScope();
+            HideTrayIcon();
+            log.Write("Host minimized by global hotkey");
         }
         private void HideHostForHotkey()
         {
+            CaptureWindowPlacement(true);
             try { controller.SetActiveVisible(false); } catch (Exception error) { log.Write("Hide active window for hotkey failed", error); }
             Hide();
             SyncShortcutScope();
@@ -43,9 +58,9 @@ namespace ExplorerTabs.App
         {
             if (IsDisposed) return;
             if (!Visible) Show();
-            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            RestoreHostWindowState();
             Activate();
-            try { controller.SetActiveVisible(true); controller.LayoutActive(CurrentBounds(), true); }
+            try { if (CanPresentExplorer) { controller.SetActiveVisible(true); controller.LayoutActive(CurrentBounds(), true); } }
             catch (Exception error) { log.Write("Restore active window from hotkey failed", error); }
             SyncShortcutScope();
             HideTrayIcon();
@@ -56,15 +71,25 @@ namespace ExplorerTabs.App
             if (tray == null)
             {
                 tray = new NotifyIcon { Icon = applicationIcon ?? SystemIcons.Application, Text = "ExplorerTabs", Visible = false };
-                var menu = new ContextMenuStrip(); HostTheme.StyleMenu(menu);
-                menu.Items.Add("显示 ExplorerTabs", null, (_, __) => QueueMenuAction(ShowHostFromHotkey));
-                menu.Items.Add(new ToolStripSeparator());
-                menu.Items.Add("关闭（分离所有窗口）", null, (_, __) => QueueMenuAction(CloseRestoringWindows));
-                menu.Items.Add("关闭", null, (_, __) => QueueMenuAction(RequestExitByClosingSessions));
-                tray.ContextMenuStrip = menu;
+                tray.ContextMenuStrip = CreateTrayMenu();
                 tray.DoubleClick += (_, __) => QueueMenuAction(ShowHostFromHotkey);
             }
             tray.Visible = true;
+        }
+        private ContextMenuStrip CreateTrayMenu()
+        {
+            var menu = new ContextMenuStrip(); HostTheme.StyleMenu(menu);
+            PopulateTrayMenu(menu);
+            menu.Opening += (_, __) => PopulateTrayMenu(menu);
+            return menu;
+        }
+        private void PopulateTrayMenu(ContextMenuStrip menu)
+        {
+            while (menu.Items.Count > 0) menu.Items[0].Dispose();
+            var show = menu.Items.Add("显示 ExplorerTabs", null, (_, __) => QueueMenuAction(ShowHostFromHotkey));
+            show.Enabled = !closing && !exitPreparing && !disposingUi;
+            menu.Items.Add(new ToolStripSeparator());
+            AddExitMenuItems(menu);
         }
         private void HideTrayIcon() { if (tray != null) tray.Visible = false; }
         private void DisposeTray()
