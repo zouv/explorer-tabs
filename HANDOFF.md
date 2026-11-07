@@ -1,21 +1,13 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-11-07；进行中：P46 发布 0.11.1。P44 / P45 修复完成且安全验证通过。P43 0.11.0 版本提交、打包与 GitHub 发布已完成，代码提交 / 标签已推送；真实 Shell 与交互体验待用户反馈，不自动操作。
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；当前正式版本 0.11.0，Release https://github.com/zouv/explorer-tabs/releases/tag/v0.11.0；历史 Release 保留。
-最后验证：2026-11-07 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过，1129 项安全断言（核心 535、原生 63、跨进程 17、标签 UI 38、创建 UI 42、工作区 / 窗框 / 菜单 UI 409、隔离打包 25），零警告 / 零错误；输出 `.runtime/build/ExplorerTabs-recovery-verify/ExplorerTabs.exe`，日志 `.runtime/verification-recovery.txt`。覆盖复制右侧 / 来源移动与消失、失效日志零 Restore、写盘失败与 UNKNOWN 保留、显式会话重开及三档缩放横条布局。初轮 fake HWND 未注册与追加测试误期望清除后横条继续显示均已修正，最终串行全套通过。`bash -o igncr check-docs.sh` 与 `git diff --check` 通过。未启动真实交互宿主、未注册全局钩子、未操作用户 Explorer；正式 0.11.0 包未改动。
+状态日期：2026-11-07；无进行中任务。P44–P46 已完成；真实 Shell、实际系统重启与交互体验待用户反馈，不自动操作。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；当前正式版本 0.11.1，Release https://github.com/zouv/explorer-tabs/releases/tag/v0.11.1；历史 Release 保留。
+最后验证：2026-11-07 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1129 项安全断言，零警告 / 零错误（`.runtime/verification-v0.11.1.txt`）；正式包原始二进制复制到独立 runner 后，未重编译复跑全部 1129 项通过（`.runtime/verification-packaged-v0.11.1.txt`）。程序集版本 / zip 全项 / 文本与 Debug PDB 可公开内容检查通过，三个附件远端 digest 与下载后 SHA-256 匹配（`.runtime/verification-remote-v0.11.1.txt`）。未启动真实交互宿主、未操作用户 Explorer。原验证快照构建时 HEAD 尚未提交，Git revision 元数据与正式包不同，方法 IL 一致；以实际包隔离复验为准，不宣称原快照字节一致。
 
-正式入口 `dist/release/unpack/ExplorerTabs.exe`；Release / Debug zip 与 `dist/release/SHA256SUMS.txt` 均已发布。标签 `v0.11.0` 固定指向代码提交 `02e2d69`，后续仅提交发布结果文档，不移动标签或重打已发布包。完整发布记录见 CHANGELOG 0.11.0 / ROADMAP P43。
-
-## 当前任务：P46（main）
-- 目标：版本 0.11.1，提交 / 推送代码及标签，正式 Debug / Release 打包并上传 GitHub Release。
-- 范围：Directory.Build.props、CHANGELOG / ROADMAP / ARCHITECTURE / HANDOFF、scripts/build.ps1 / package.ps1 的既有发布流程。
-- DoD：全套安全验证、程序集版本 / zip 全项 / SHA256 核验通过，Release 三附件上传并远端核对，代码 / 标签 / 结果文档推送，工作树干净。
-- 进行中：0.11.1 全套 1129 项安全验证通过，零警告 / 零错误；版本与 CHANGELOG 已更新。检测到宿主 PID 38356 正运行正式入口，禁止覆盖 / 自动关闭。
-- 下一步：提交推送代码和标签 v0.11.1；待用户正常退出宿主，再打包 / 上传 / 核验。测试输出 `.runtime/build/ExplorerTabs-v0.11.1-verified`，日志 `.runtime/verification-v0.11.1.txt`；旧正式包暂不动。
-- 授权：用户已明确 commit & push / package & upload；不包含终止宿主、操作真实 Explorer。
+正式入口 `dist/release/unpack/ExplorerTabs.exe`；Release / Debug zip 与 `dist/release/SHA256SUMS.txt` 均已发布。标签 `v0.11.1` 固定指向代码提交 `cc455de`，发布结果文档另提交，不移动标签或因文档收尾重打包。完整发布记录见 CHANGELOG 0.11.1 / ROADMAP P44–P46。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
-- 2026-11-07 本轮验证入口 `.runtime/build/ExplorerTabs-recovery-verify/ExplorerTabs.exe`（非正式包）。先正常退出旧宿主，再手动启动：右键复制中间 / 非活动标签应在该标签右侧占位并完成；系统重启后旧窗口全失效应进入主界面提示手动重开保存目录，无快照不承诺重开。真实 Shell / 实际系统重启尚未操作，完整说明见 CHANGELOG 未发布 / ROADMAP P44–P45。
+- 2026-11-07 本轮验证入口为正式 0.11.1 `dist/release/unpack/ExplorerTabs.exe`。先正常退出旧宿主，再手动启动：右键复制中间 / 非活动标签应在该标签右侧占位并完成；系统重启后旧窗口全失效应进入主界面提示手动重开保存目录，无快照不承诺重开。真实 Shell / 实际系统重启尚未操作，完整说明见 CHANGELOG 0.11.1 / ROADMAP P44–P45。
 - 2026-11-01 正式 0.11.0 包包含前三轮改动。正常退出旧宿主后手动运行正式入口；确认应用 / 托盘退出两项的窗口保留结果、收藏 / 组直接打开与管理入口、会话追加恢复、只读 / 忙碌禁用，以及长名称在高 DPI 下的显示；离屏检查不等于真实弹出与键鼠验收。
 
 - 2026-11-01 热键 / 尺寸：默认切后台应最小化并保留任务栏，勾选托盘选项后才隐藏；其他程序前台时按键应呼出，最大化切后台 / 呼出应仍最大化，设置捕获期间不切换窗口。用 X / Alt+F4 / 退出并保留窗口分别在普通 / 最大化 / 最小化 / 托盘状态关闭后重开，确认尺寸不变；真实注册 / 前台 / 托盘尚未自动操作。
