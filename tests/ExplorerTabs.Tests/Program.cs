@@ -539,7 +539,8 @@ namespace ExplorerTabs.Tests
                 var missing = journal.Recover(read, api);
                 Check(missing.Restored.Count == 0 && missing.Missing.Count == 1 && missing.Errors.Count == 0,
                     "destroyed-window recovery reports zero restored rather than silent success");
-                Check(missing.Summary.Contains("0 个原窗口已恢复") && missing.Summary.Contains("1 个原窗口已消失"),
+                Check(missing.Summary.Contains("0 个原窗口已恢复") && missing.Summary.Contains("1 个原窗口已失效") &&
+                    missing.Summary.Contains("身份不匹配"),
                     "recovery result explicitly distinguishes missing windows");
                 Check(!api.Events.Any(e => e.StartsWith("restore:")) && journal.Read()!.Windows.Count == 0, "stale journal never mutates lost window");
                 journal.Save(new[] { snapshot });
@@ -552,6 +553,8 @@ namespace ExplorerTabs.Tests
                 var successful = journal.Recover(journal.Read()!, api);
                 Check(successful.Restored.Count == 1 && successful.Missing.Count == 0 && successful.Errors.Count == 0,
                     "recovery reports actual restored count");
+                AllMissingJournalTests(journal, snapshot);
+                StartupRecoveryTests(journal, snapshot);
                 File.WriteAllText(journal.FilePath, "not json");
                 Check(Throws(() => journal.Read()) != null, "corrupt journal is rejected instead of overwritten");
                 Check(Directory.GetFiles(directory, "*.tmp").Length == 0, "atomic writes leave no temporary files");
@@ -562,6 +565,191 @@ namespace ExplorerTabs.Tests
                 foreach (string file in Directory.GetFiles(directory)) File.Delete(file);
                 Directory.Delete(directory);
             }
+        }
+
+        private static RecoveryDocument SeedDeadJournal(RecoveryJournal journal, params WindowSnapshot[] snapshots)
+        {
+            journal.Save(snapshots);
+            var document = journal.Read()!;
+            document.HostProcessId = int.MaxValue; document.HostStartedUtcTicks = 1;
+            using (var stream = File.Create(journal.FilePath))
+                new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(RecoveryDocument)).WriteObject(stream, document);
+            return document;
+        }
+
+        private static void AllMissingJournalTests(RecoveryJournal journal, WindowSnapshot snapshot)
+        {
+            var second = new WindowSnapshot
+            {
+                Identity = Identity(2), HostHandle = snapshot.HostHandle, Mode = snapshot.Mode,
+                Style = snapshot.Style, ExtendedStyle = snapshot.ExtendedStyle, Placement = snapshot.Placement
+            };
+            var api = new FakeWindows(); api.Alive.Clear();
+            var document = SeedDeadJournal(journal, snapshot, second);
+            var originalWindows = document.Windows;
+            Check(journal.TryClearAllMissing(document, api, out var report) && report != null && report.Missing.Count == 2 &&
+                report.Restored.Count == 0 && report.Errors.Count == 0, "all missing fast path reports identities without restoring");
+            var cleared = journal.Read()!;
+            Check(cleared.Windows.Count == 0 && cleared.HostProcessId == document.HostProcessId &&
+                cleared.HostStartedUtcTicks == document.HostStartedUtcTicks && ReferenceEquals(document.Windows, originalWindows) &&
+                document.Windows.Count == 2, "fast clear preserves original owner and input document");
+            Check(api.MatchCalls == 2 && api.Events.Count == 0, "fast clear checks every identity with zero Restore or presentation operations");
+
+            foreach (int aliveCount in new[] { 1, 2 })
+            {
+                document = SeedDeadJournal(journal, snapshot, second);
+                var bytes = File.ReadAllBytes(journal.FilePath);
+                api = new FakeWindows(); api.Alive.Clear(); api.Alive.Add(1);
+                if (aliveCount == 2) api.Alive.Add(2);
+                Check(!journal.TryClearAllMissing(document, api, out report) && report == null && api.MatchCalls == 2,
+                    "live or mixed identities reject fast clear after complete scan: " + aliveCount);
+                Check(bytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)) && document.Windows.Count == 2 && api.Events.Count == 0,
+                    "live or mixed rejection keeps input and disk without restoring: " + aliveCount);
+            }
+
+            document = SeedDeadJournal(journal, snapshot, second);
+            var beforeUnknown = File.ReadAllBytes(journal.FilePath);
+            api = new FakeWindows { ThrowOnMatch = true };
+            Check(!journal.TryClearAllMissing(document, api, out report) && report == null && api.MatchCalls == 2 &&
+                beforeUnknown.SequenceEqual(File.ReadAllBytes(journal.FilePath)) && document.Windows.Count == 2 && api.Events.Count == 0,
+                "UNKNOWN rejects fast clear, scans all entries and preserves disk/input with zero Restore");
+
+            journal.Save(new[] { snapshot }); document = journal.Read()!;
+            var liveBytes = File.ReadAllBytes(journal.FilePath);
+            api = new FakeWindows(); api.Alive.Clear();
+            Check(!journal.TryClearAllMissing(document, api, out report) && report == null && api.MatchCalls == 0 &&
+                liveBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)) && api.Events.Count == 0,
+                "live owner blocks fast path before window queries and preserves journal");
+
+            document = SeedDeadJournal(journal, snapshot);
+            var originalPid = document.HostProcessId; var originalStarted = document.HostStartedUtcTicks;
+            var raceBytes = File.ReadAllBytes(journal.FilePath);
+            api = new FakeWindows(); api.Alive.Clear();
+            api.MatchCallback = _ =>
+            {
+                using (var process = Process.GetCurrentProcess())
+                { document.HostProcessId = process.Id; document.HostStartedUtcTicks = process.StartTime.ToUniversalTime().Ticks; }
+            };
+            Check(!journal.TryClearAllMissing(document, api, out report) && report == null &&
+                raceBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)) && document.Windows.Count == 1 && api.Events.Count == 0,
+                "owner TOCTOU recheck prevents write and never restores");
+            document.HostProcessId = originalPid; document.HostStartedUtcTicks = originalStarted;
+
+            var writeBytes = File.ReadAllBytes(journal.FilePath);
+            api = new FakeWindows(); api.Alive.Clear();
+            report = null;
+            using (var locked = new FileStream(journal.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                Check(Throws(() => journal.TryClearAllMissing(document, api, out report)) is IOException,
+                    "fast clear write failure propagates to block startup");
+            Check(report == null && document.Windows.Count == 1 && document.HostProcessId == originalPid &&
+                document.HostStartedUtcTicks == originalStarted && writeBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)) && api.Events.Count == 0,
+                "failed fast write leaves input, owner and on-disk bytes intact with zero Restore");
+
+            var query = typeof(NativeWindowApi).GetMethod("MatchQuerySucceeded", BindingFlags.NonPublic | BindingFlags.Static)!;
+            foreach (string operation in new[] { "GetWindowThreadProcessId", "GetClassName" })
+            {
+                Check((bool)query.Invoke(null, new object[] { true, true, operation })!, operation + " successful query is usable");
+                Check(!(bool)query.Invoke(null, new object[] { false, false, operation })!, operation + " failed query on vanished window means missing");
+                var error = Throws(() => query.Invoke(null, new object[] { false, true, operation }));
+                Check(error.InnerException is System.ComponentModel.Win32Exception && error.InnerException.Message.Contains("UNKNOWN"),
+                    operation + " failed query on existing window remains UNKNOWN");
+            }
+        }
+
+        private static void StartupRecoveryTests(RecoveryJournal journal, WindowSnapshot snapshot)
+        {
+            var type = Assembly.Load("ExplorerTabs").GetType("ExplorerTabs.App.Program", true)!;
+            var execute = type.GetMethod("ExecuteStartupRecovery", BindingFlags.NonPublic | BindingFlags.Static)!;
+            int confirms = 0, notices = 0; bool consent = true;
+            RecoveryReport? shown = null, startup = null;
+            var logs = new List<string>();
+            bool Run(FakeWindows windows)
+            {
+                object?[] arguments = { journal, windows, new Func<RecoveryDocument, bool>(_ => { confirms++; return consent; }),
+                    new Action<RecoveryReport>(report => { notices++; shown = report; }), new Action<string>(logs.Add), null };
+                try { return (bool)execute.Invoke(null, arguments)!; }
+                finally { startup = (RecoveryReport?)arguments[5]; }
+            }
+            void Reset() { confirms = notices = 0; shown = startup = null; logs.Clear(); consent = true; }
+
+            SeedDeadJournal(journal, snapshot);
+            var api = new FakeWindows(); api.Alive.Clear();
+            Check(Run(api) && confirms == 0 && notices == 0 && startup != null && startup.Missing.Count == 1 &&
+                logs.Single().Contains("startup.recovery.all-missing") && api.Events.Count == 0 && journal.Read()!.Windows.Count == 0,
+                "startup fast path queues notice report/log but never calls confirmation, result popup or Restore");
+            Reset();
+            Check(Run(new FakeWindows()) && startup == null && confirms == 0 && notices == 0 && logs.Count == 0,
+                "startup empty journal has no recovery notice");
+
+            Reset(); SeedDeadJournal(journal, snapshot); consent = false;
+            var deniedBytes = File.ReadAllBytes(journal.FilePath); api = new FakeWindows();
+            Check(!Run(api) && confirms == 1 && notices == 0 && startup == null && logs.Count == 0 && api.Events.Count == 0 &&
+                deniedBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)), "startup no consent exits and keeps original journal without Restore");
+
+            Reset(); SeedDeadJournal(journal, snapshot); api = new FakeWindows();
+            Check(Run(api) && confirms == 1 && notices == 1 && shown != null && shown.Restored.Count == 1 && startup == null &&
+                api.Events.SequenceEqual(new[] { "restore:1" }) && journal.Read()!.Windows.Count == 0,
+                "startup consent restores live identity through existing manual path");
+
+            Reset(); SeedDeadJournal(journal, snapshot); api = new FakeWindows { FailRestore = true };
+            Check(!Run(api) && confirms == 1 && notices == 1 && shown != null && shown.Errors.Count == 1 && startup == null &&
+                journal.Read()!.Windows.Count == 1 && !RecoveryJournal.OwnerIsRunning(journal.Read()!),
+                "startup manual restore errors show result, retain dead-owner pending journal and block startup");
+
+            Reset(); SeedDeadJournal(journal, snapshot); api = new FakeWindows { ThrowOnMatch = true };
+            Check(!Run(api) && confirms == 1 && notices == 1 && shown != null && shown.Errors.Count == 1 && shown.Missing.Count == 0 &&
+                startup == null && api.Events.Count == 0 && journal.Read()!.Windows.Count == 1,
+                "startup UNKNOWN falls back to consent then blocks on query error without Restore");
+
+            Reset(); SeedDeadJournal(journal, snapshot); consent = false; api = new FakeWindows { ThrowOnMatch = true };
+            var unknownBytes = File.ReadAllBytes(journal.FilePath);
+            Check(!Run(api) && confirms == 1 && notices == 0 && startup == null && api.Events.Count == 0 &&
+                unknownBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)),
+                "startup UNKNOWN plus no consent preserves original bytes and never restores");
+
+            Reset();
+            var second = new WindowSnapshot
+            {
+                Identity = Identity(2), HostHandle = snapshot.HostHandle, Mode = snapshot.Mode,
+                Style = snapshot.Style, ExtendedStyle = snapshot.ExtendedStyle, Placement = snapshot.Placement
+            };
+            SeedDeadJournal(journal, snapshot, second); api = new FakeWindows(); api.Alive.Remove(2);
+            Check(Run(api) && confirms == 1 && notices == 1 && shown != null && shown.Restored.Count == 1 && shown.Missing.Count == 1 &&
+                startup == null && api.Events.SequenceEqual(new[] { "restore:1" }),
+                "startup mixed identities still require consent and restore only the live exact identity");
+
+            Reset(); journal.Save(new[] { snapshot }); api = new FakeWindows();
+            var ownerBytes = File.ReadAllBytes(journal.FilePath);
+            Check(Throws(() => Run(api)).InnerException is InvalidOperationException && confirms == 0 && notices == 0 &&
+                api.MatchCalls == 0 && api.Events.Count == 0 && ownerBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)),
+                "startup live owner blocks before any dialog/query/write");
+
+            Reset(); SeedDeadJournal(journal, snapshot); api = new FakeWindows();
+            object?[] raceArguments = { journal, api, new Func<RecoveryDocument, bool>(previous =>
+                {
+                    confirms++;
+                    using (var process = Process.GetCurrentProcess())
+                    { previous.HostProcessId = process.Id; previous.HostStartedUtcTicks = process.StartTime.ToUniversalTime().Ticks; }
+                    return true;
+                }), new Action<RecoveryReport>(_ => notices++), new Action<string>(logs.Add), null };
+            var consentRaceBytes = File.ReadAllBytes(journal.FilePath);
+            Check(Throws(() => execute.Invoke(null, raceArguments)).InnerException is InvalidOperationException &&
+                confirms == 1 && notices == 0 && api.Events.Count == 0 && consentRaceBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)),
+                "startup owner TOCTOU during consent is rejected before manual Restore or write");
+
+            Reset(); SeedDeadJournal(journal, snapshot); api = new FakeWindows(); api.Alive.Clear();
+            var failedBytes = File.ReadAllBytes(journal.FilePath);
+            using (var locked = new FileStream(journal.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                Check(Throws(() => Run(api)).InnerException is IOException, "startup fast write error propagates rather than falling back to consent");
+            Check(confirms == 0 && notices == 0 && startup == null && logs.Count == 0 && api.Events.Count == 0 &&
+                failedBytes.SequenceEqual(File.ReadAllBytes(journal.FilePath)), "startup write error preserves disk and has no dialogs or Restore");
+
+            var detailsMethod = type.GetMethod("StartupRecoveryDetails", BindingFlags.NonPublic | BindingFlags.Static)!;
+            var missing = new RecoveryReport(); missing.Missing.Add("Test identity");
+            string details = (string)detailsMethod.Invoke(null, new object[] { missing })!;
+            Check(details.Contains("身份不匹配") && details.Contains("显式重新打开已保存的目录") &&
+                details.Contains("目录快照不等于原窗口状态") && !details.Contains("强杀"),
+                "startup result wording distinguishes identity invalidation from saved directories without kill attribution");
         }
 
         private static Control[] TabControls(FlowLayoutPanel strip) =>
@@ -1217,10 +1405,14 @@ namespace ExplorerTabs.Tests
             public readonly HashSet<long> Visible = new HashSet<long>();
             public readonly List<string> Events = new List<string>();
             public bool FailAttach, FailRestore, FailValidate, ThrowOnMatch;
+            public int MatchCalls;
+            public Action<WindowIdentity>? MatchCallback;
             public long FailShowHandle;
             public long FailHideHandle, FailRestoreHandle;
             public bool Matches(WindowIdentity identity)
             {
+                MatchCalls++;
+                MatchCallback?.Invoke(identity);
                 if (ThrowOnMatch) throw new System.ComponentModel.Win32Exception(5, "Injected access denied");
                 return Alive.Contains(identity.Handle);
             }

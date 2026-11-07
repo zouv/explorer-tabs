@@ -84,6 +84,13 @@ namespace ExplorerTabs.Tests
                         "duplicate uses explicit source HWND, creates second tab and does not inherit custom alias");
                     Check(service.Excluded.SequenceEqual(new long[] { 1 }) && service.Directory == @"C:\New",
                         "UI passes existing attached handles and saved default directory to creation service");
+                    Check(type.GetMethods(PrivateInstance).Count(m => m.Name == "AttachCreated") == 1 &&
+                        type.GetMethod("AttachCreated", PrivateInstance)!.GetParameters().Length == 2,
+                        "workspace/reflection retains a unique two-argument AttachCreated entry rather than ambiguous overloads");
+                    using (var menu = (ContextMenuStrip)UiCall(form, "CreateTabMenu", first)!)
+                        Check(menu.Items.Cast<ToolStripItem>().Single(i => i.Text == "复制标签").ToolTipText.Contains("右侧") &&
+                            menu.Items.Cast<ToolStripItem>().Single(i => i.Text == "复制标签").ToolTipText.Contains("不复制文件"),
+                            "duplicate menu explains source-right placement and directory-only copy semantics");
                     service.Hold = true; service.NextHandle = 3;
                     task = (Task)UiCall(form, "CreateTabAsync", new object?[] { null })!;
                     Check(!task.IsCompleted && !UiField<Button>(form, "newTab").Enabled &&

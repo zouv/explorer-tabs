@@ -63,7 +63,7 @@ namespace ExplorerTabs.App
                     Application.SetCompatibleTextRenderingDefault(false);
                     Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
                     var journal = new RecoveryJournal(Path.Combine(stateDirectory, "recovery.json"));
-                    if (!RecoverBeforeStartup(journal, log)) return 1;
+                    if (!RecoverBeforeStartup(journal, log, out var startupReport)) return 1;
                     IAppSettingsStore? preferences = new AppSettingsStore(Path.Combine(stateDirectory, "settings.json"));
                     var settings = new AppSettings();
                     try { settings = preferences.Read() ?? settings; }
@@ -86,6 +86,7 @@ namespace ExplorerTabs.App
                         MessageBox.Show("会话库无法读取，原文件保留且本次不自动覆盖。收藏 / 标签组 / 会话保存暂不可用。\n请备份并检查 workspace.json 后重启。\n\n" + error.Message,
                             "ExplorerTabs 会话库", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
+                    if (startupReport != null) form.ConfigureStartupRecovery(startupReport.Missing.Count);
                     form.ConfigureLibrary(workspaceStore, workspace);
                     Application.ThreadException += (_, e) =>
                     {
@@ -111,29 +112,51 @@ namespace ExplorerTabs.App
         private static NativeWindowApi CreateWindowApi(AppLog log) => new NativeWindowApi(
             warning: message => log.Write("Presentation warning: " + message), trace: message => log.Write("Native: " + message));
 
-        private static bool RecoverBeforeStartup(RecoveryJournal journal, AppLog log)
+        private static bool RecoverBeforeStartup(RecoveryJournal journal, AppLog log, out RecoveryReport? startupReport)
         {
+            return ExecuteStartupRecovery(journal, CreateWindowApi(log),
+                previous => MessageBox.Show(
+                    "检测到上次未完成的窗口恢复记录（" + previous.Windows.Count + " 个）。\n\n" +
+                    "是否尝试将仍存活且身份匹配的窗口恢复到接管前的位置和状态？\n" +
+                    "已消失或身份不匹配的原窗口不会被恢复。选择“否”将保留记录并退出，不会接管新窗口。\n\n" + journal.FilePath,
+                    "ExplorerTabs 恢复", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes,
+                report => MessageBox.Show(StartupRecoveryDetails(report), "ExplorerTabs 恢复结果", MessageBoxButtons.OK,
+                    report.Errors.Count > 0 ? MessageBoxIcon.Error : report.Missing.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information),
+                message => log.Write(message), out startupReport);
+        }
+
+        internal static bool ExecuteStartupRecovery(RecoveryJournal journal, IWindowApi windows,
+            Func<RecoveryDocument, bool> confirm, Action<RecoveryReport> showReport, Action<string> log,
+            out RecoveryReport? startupReport)
+        {
+            startupReport = null;
             var previous = journal.Read();
             if (previous == null || previous.Windows.Count == 0) return true;
             if (RecoveryJournal.OwnerIsRunning(previous))
                 throw new InvalidOperationException("恢复日志的原宿主仍在运行。为安全起见不启动第二个宿主。");
-            var consent = MessageBox.Show(
-                "检测到上次未完成的窗口恢复记录（" + previous.Windows.Count + " 个）。\n\n" +
-                "是否尝试将仍存活的窗口恢复到接管前的位置和状态？\n" +
-                "已经销毁的 Explorer 窗口无法救回。选择“否”将保留记录并退出，不会接管新窗口。\n\n" + journal.FilePath,
-                "ExplorerTabs 恢复", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-            if (consent != DialogResult.Yes) return false;
-            var report = journal.Recover(previous, CreateWindowApi(log));
-            log.Write(report.Summary + " Missing=" + string.Join(" | ", report.Missing) + "; Errors=" + string.Join(" | ", report.Errors));
+            if (journal.TryClearAllMissing(previous, windows, out var fastReport))
+            {
+                startupReport = fastReport;
+                log("startup.recovery.all-missing; " + fastReport!.Summary + " Missing=" + string.Join(" | ", fastReport.Missing));
+                return true; // The main UI presents the notice; no confirmation or result MessageBox.
+            }
+            if (!confirm(previous)) return false;
+            var report = journal.Recover(previous, windows);
+            log(report.Summary + " Missing=" + string.Join(" | ", report.Missing) + "; Errors=" + string.Join(" | ", report.Errors));
+            showReport(report);
+            return report.Errors.Count == 0;
+        }
+
+        internal static string StartupRecoveryDetails(RecoveryReport report)
+        {
             string details = report.Summary;
             if (report.Missing.Count > 0)
-                details += "\n\n以下原窗口已不存在：\n" + string.Join("\n", report.Missing) +
-                    "\n\n嵌入后强杀宿主可能连带销毁 Explorer 窗口。本次没有重新打开目录，也不能恢复已销毁窗口的选择、滚动或导航历史。";
+                details += "\n\n以下原窗口已失效（已消失或身份不匹配）：\n" + string.Join("\n", report.Missing) +
+                    "\n\n本次没有重新打开目录，也不能恢复原窗口的选择、滚动或导航历史。" +
+                    "如需继续，请在主界面的“会话与恢复”中显式重新打开已保存的目录；目录快照不等于原窗口状态。";
             if (report.Errors.Count > 0)
                 details += "\n\n以下窗口恢复失败，记录已保留。请不要删除恢复日志：\n" + string.Join("\n", report.Errors);
-            MessageBox.Show(details, "ExplorerTabs 恢复结果", MessageBoxButtons.OK,
-                report.Errors.Count > 0 ? MessageBoxIcon.Error : report.Missing.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
-            return report.Errors.Count == 0;
+            return details;
         }
     }
 }

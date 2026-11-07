@@ -79,9 +79,90 @@ namespace ExplorerTabs.Tests
                 using ((IDisposable)UiCall(form, "EnterModal")!) { }
                 Check(hiddenApi.Visible.Count == 0, "modal cleanup also honors hidden host visibility");
             }
+            DuplicatePlacementUiTests(directory);
             FastCloseUiTests(directory);
             UncancellableCloseReadTest(directory);
             PersistentTabMenuTests(directory);
+        }
+
+        private static void DuplicatePlacementUiTests(string directory)
+        {
+            // Creation resolves the reference anchor again at completion, not the active tab or
+            // an index captured before Shell work. All windows/services here remain synthetic.
+            for (int scenario = 0; scenario < 3; scenario++)
+            {
+                var api = new FakeWindows(); var journal = new FakeStore(); var host = new HostController(api, journal);
+                var first = Add(host, 1); var source = Add(host, 2); var last = Add(host, 3); host.Activate(first, Bounds);
+                var service = new WorkspaceService { HoldCreate = true, NextHandle = 4 };
+                using (var form = WorkspaceForm(host, service, directory, new WorkspaceStore()))
+                {
+                    UiCall(form, "RefreshTabs"); var strip = UiField<FlowLayoutPanel>(form, "tabs"); var before = TabControls(strip);
+                    var menus = before.Select(b => b.ContextMenuStrip).ToArray(); var plus = UiField<Button>(form, "newTab");
+                    var create = WorkspaceTask(form, "CreateTabAsync", source);
+                    var pending = TabControls(strip).Single(b => !before.Contains(b));
+                    Check(TabControls(strip).SequenceEqual(new[] { before[0], before[1], pending, before[2] }) &&
+                        !pending.Enabled && pending.ContextMenuStrip == null && host.Active == first && host.Sessions.Count == 3 && journal.Snapshots.Count == 3,
+                        "non-active middle duplicate immediately inserts disabled placeholder to source right without selecting or journaling it: " + scenario);
+                    UiCall(form, "RefreshTabs");
+                    Check(TabControls(strip).SequenceEqual(new[] { before[0], before[1], pending, before[2] }),
+                        "refresh retains duplicate placeholder beside source instead of appending: " + scenario);
+                    if (scenario == 1) host.MoveTab(source, 0);
+                    if (scenario == 2) { api.Alive.Remove(2); host.PruneTargets(new[] { source }); }
+                    UiCall(form, "RefreshTabs");
+                    var expectedPending = scenario == 1 ? new[] { before[1], pending, before[0], before[2] } :
+                        scenario == 2 ? new[] { before[0], before[2], pending } : new[] { before[0], before[1], pending, before[2] };
+                    Check(TabControls(strip).SequenceEqual(expectedPending) && strip.Controls.GetChildIndex(plus) == strip.Controls.Count - 1,
+                        "pending follows source latest order, falls back to tail when source disappears, and keeps plus last: " + scenario);
+                    service.FinishCreate(); PumpTask(create); var duplicate = host.Active!;
+                    var expectedSessions = scenario == 1 ? new[] { source, duplicate, first, last } :
+                        scenario == 2 ? new[] { first, last, duplicate } : new[] { first, source, duplicate, last };
+                    Check(host.Sessions.SequenceEqual(expectedSessions) && duplicate.Identity.Handle == 4 && duplicate.CustomTitle == null &&
+                        TabControls(strip).SequenceEqual(expectedPending) && pending.Enabled && pending.ContextMenuStrip != null &&
+                        journal.Snapshots.Count == expectedSessions.Length,
+                        "duplicate completes original placeholder and commits matching model order after source move/loss: " + scenario);
+                    UiCall(form, "RefreshTabs"); UiCall(form, "RefreshTabs");
+                    Check(TabControls(strip).SequenceEqual(expectedPending) && host.Sessions.SequenceEqual(expectedSessions) &&
+                        !before[0].IsDisposed && before[0].ContextMenuStrip == menus[0] && !before[2].IsDisposed && before[2].ContextMenuStrip == menus[2] &&
+                        (scenario == 2 || (!before[1].IsDisposed && before[1].ContextMenuStrip == menus[1])) &&
+                        strip.Controls.GetChildIndex(plus) == strip.Controls.Count - 1,
+                        "completed duplicate order survives subsequent renders while reusing surviving buttons and menus: " + scenario);
+                    if (scenario == 0)
+                    {
+                        // FakeWindows starts with only HWNDs 1..4 alive; register subsequent
+                        // synthetic creations before Activate performs its exact identity check.
+                        api.Alive.Add(5); api.Alive.Add(6);
+                        service.HoldCreate = true;
+                        var ordinary = WorkspaceTask(form, "CreateTabAsync", new object?[] { null });
+                        var ordinaryPending = TabControls(strip).Last();
+                        Check(ordinaryPending.Text.Contains("正在打开") && TabControls(strip).Take(expectedPending.Length).SequenceEqual(expectedPending),
+                            "ordinary creation still places placeholder at tail even when active tab is in the middle");
+                        service.FinishCreate(); PumpTask(ordinary);
+                        Check(host.Sessions.Take(expectedSessions.Length).SequenceEqual(expectedSessions) && host.Sessions.Last().Identity.Handle == 5 &&
+                            TabControls(strip).Last() == ordinaryPending && strip.Controls.GetChildIndex(plus) == strip.Controls.Count - 1,
+                            "ordinary creation commits tail model order and reuses its tail placeholder");
+                        host.Activate(source, Bounds);
+                        using (var result = new CreatedExplorer(Identity(6), @"C:\Workspace"))
+                            UiCall(form, "AttachCreated", result, source.Snapshot.Mode);
+                        Check(host.Sessions.Take(expectedSessions.Length).SequenceEqual(expectedSessions) && host.Sessions.Last().Identity.Handle == 6 &&
+                            TabControls(strip).Last().Text.Contains("Test 6"),
+                            "two-argument workspace/reflection attach entry remains append-only despite a middle active source");
+                    }
+                }
+            }
+            var cancelApi = new FakeWindows(); var cancelJournal = new FakeStore(); var cancelHost = new HostController(cancelApi, cancelJournal);
+            var left = Add(cancelHost, 1); var target = Add(cancelHost, 2); Add(cancelHost, 3); cancelHost.Activate(left, Bounds);
+            var cancelledService = new WorkspaceService { HoldCreate = true, NextHandle = 4 };
+            using (var form = WorkspaceForm(cancelHost, cancelledService, directory, new WorkspaceStore()))
+            {
+                UiCall(form, "RefreshTabs"); var strip = UiField<FlowLayoutPanel>(form, "tabs"); var before = TabControls(strip);
+                var sessions = cancelHost.Sessions.ToArray(); var create = WorkspaceTask(form, "CreateTabAsync", target);
+                var pending = TabControls(strip).Single(b => !before.Contains(b));
+                UiField<CancellationTokenSource>(form, "creation").Cancel(); cancelledService.FinishCreate(); PumpTask(create);
+                UiCall(form, "RefreshTabs");
+                Check(pending.IsDisposed && TabControls(strip).SequenceEqual(before) && cancelHost.Sessions.SequenceEqual(sessions) &&
+                    cancelHost.Active == left && cancelJournal.Snapshots.Count == 3,
+                    "cancelled middle duplicate removes only placeholder and rejects uncancellable late result without changing model order or activation");
+            }
         }
 
         private static void FastCloseUiTests(string directory)

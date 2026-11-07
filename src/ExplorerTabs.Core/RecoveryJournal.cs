@@ -22,7 +22,7 @@ namespace ExplorerTabs.Core
         public List<string> Restored { get; } = new List<string>();
         public List<string> Missing { get; } = new List<string>();
         public List<string> Errors { get; } = new List<string>();
-        public string Summary => $"恢复完成：{Restored.Count} 个原窗口已恢复；{Missing.Count} 个原窗口已消失；{Errors.Count} 个恢复失败。";
+        public string Summary => $"恢复结果：{Restored.Count} 个原窗口已恢复；{Missing.Count} 个原窗口已失效（已消失或身份不匹配）；{Errors.Count} 个恢复失败。";
     }
 
     public sealed class RecoveryJournal : ISnapshotStore
@@ -83,6 +83,38 @@ namespace ExplorerTabs.Core
             catch (ArgumentException) { return false; }
             catch (InvalidOperationException) { return false; }
             catch (System.ComponentModel.Win32Exception) { return true; } // Unknown => do not touch live state.
+        }
+
+        public bool TryClearAllMissing(RecoveryDocument document, IWindowApi windows, out RecoveryReport? report)
+        {
+            report = null;
+            if (OwnerIsRunning(document)) return false;
+            var candidate = new RecoveryReport();
+            bool allMissing = true;
+            foreach (var snapshot in document.Windows)
+            {
+                try
+                {
+                    if (windows.Matches(snapshot.Identity)) allMissing = false;
+                    else candidate.Missing.Add(snapshot.Identity.Title);
+                }
+                catch (Exception)
+                {
+                    // UNKNOWN is not evidence of a missing identity; leave manual recovery in charge.
+                    allMissing = false;
+                }
+            }
+            if (!allMissing || OwnerIsRunning(document)) return false;
+            // Commit a separate empty document, retaining the original owner and input even if
+            // writing fails. This path never restores windows or changes their presentation.
+            Write(new RecoveryDocument
+            {
+                Version = document.Version, HostProcessId = document.HostProcessId,
+                HostStartedUtcTicks = document.HostStartedUtcTicks,
+                Windows = new List<WindowSnapshot>()
+            });
+            report = candidate;
+            return true;
         }
 
         public RecoveryReport Recover(RecoveryDocument document, IWindowApi windows)

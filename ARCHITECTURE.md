@@ -18,7 +18,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 多行 / 排序 / 设置 | TabStrip.cs、SettingsDialog.cs、AppSettings.cs、WorkspaceUiTests.cs | ShellExplorerBackend |
 | 全局快捷键 / 托盘 / 此电脑 | MainForm.GlobalHotkey.cs、GlobalHotkeys.cs、GlobalHotkey.cs、GlobalHotkeyPolicy.cs、WindowPreferencesTests.cs、FolderTarget.cs、ExplorerCreation.cs、ShellViewReference.cs、SettingsDialog.cs | 菜单内部实现、工作区库内部 |
 | 窗口尺寸 / 最大化记忆 | MainForm.WindowPreferences.cs、WindowPlacementTracker.cs、AppSettings.cs、WindowPreferencesTests.cs | Shell ABI、工作区库 |
-| 分离黑块 / 任务栏 / 事故恢复 | HostController.cs、NativeWindowApi.cs、RestorePresentation.cs、RecoveryJournal.cs | 收藏库、快捷键设置 UI |
+| 分离 / 事故恢复 / 重启会话引导 | HostController.cs、NativeWindowApi.cs、RestorePresentation.cs、RecoveryJournal.cs、Program.cs、MainForm.WorkspaceUi.cs、Program.JournalTests / WorkspaceUiTests | 收藏管理、快捷键设置 UI |
 | 产品 / 工程改名 / 旧版兼容 | ProductIdentity.cs、Program.cs、BrandingTests.cs、工程文件、scripts/build.ps1 | Shell ABI、原生恢复执行 |
 | 发布 / 自动验证 / 打包 | scripts/build.ps1、scripts/package.ps1、build.bat / test.bat / verify.bat / clean.bat / run.bat / dev.bat / ci.bat、package.bat、manager.sh、Directory.Build.props、tests/ExplorerTabs.Tests | 用户历史反馈、界面实现细节 |
 
@@ -32,7 +32,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色、SidebarButton / ThemedCheckBox / FieldHost / PresetButton、DialogStyle / DialogTitleBar 无边框弹窗、同一 GraphicsPath 生成的外 / 内圆角、实色 1px 边框环、欢迎页 ResizeRedraw；不依赖 SVG 运行库 |
 | src/ExplorerTabs.App/AboutDialog.cs | 应用介绍：嵌入图标、程序集版本、简短说明与关闭按钮；沿用 ShellDialog 边框 / 圆角 |
 | src/ExplorerTabs.App/MainForm.cs | 接管、激活、分离、创建、轮询、模态范围与 UI 状态同步 |
-| src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏 / 加入 / 分离 / 收藏 / 会话菜单、共享能力判断 / 退出项 / 动态标题；快照直接打开、管理入口；菜单所有权 / 延后释放模态 scope、恢复横条与 QueueUi |
+| src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏 / 加入 / 分离 / 收藏 / 会话菜单、共享能力判断 / 退出项 / 动态标题；快照直接打开、管理入口；菜单所有权 / 延后释放模态 scope、失效原窗口 / 显式重开会话自适应横条与 QueueUi |
 | src/ExplorerTabs.App/LibraryManagerDialog.cs | “管理收藏与标签组”：收藏目录 / 标签组两页；打开、收藏目录、重命名、移除、删除；修改留在私有副本，保存或打开时由宿主统一校验持久化，取消丢弃 |
 | src/ExplorerTabs.App/MainForm.WorkspacePersistence.cs | 按标签数预算的有界串行目录捕获、完整会话保存、串行显式恢复、自动保存静默、退出独立 30 秒上限 |
 | src/ExplorerTabs.App/MainForm.Commands.cs | 精确关闭、150ms 目录等待、75ms 指定目标确认、请求后左邻聚焦 / 消失后清理重开栈、标签搜索、命令面板与路由 |
@@ -57,6 +57,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | assets/icons/、assets/screenshots/ | 三版原创 SVG、对比预览、暂用 A 的多尺寸 ICO / 嵌入资源；README 引用的离屏单行 / 多行截图（`main-window.png` 由 `--render-tabs <png> 1100`、`multi-row.png` 由 `--render-workspace <png> 1100` 生成，不含真实 Explorer 内容） |
 | tests/ExplorerTabs.Tests/WorkspaceTests.cs、WorkspaceUiTests.cs | 库 / 快捷键 / close / STA 策略；隐藏 UI 会话、迟到结果、多行跨行拖动、设置 / 搜索与管理副本提交 |
 | tests/ExplorerTabs.Tests/MenuConsistencyTests.cs | 菜单文案 / 空态 / 忙碌 / 只读 / 快照 / 身份 / 容量 / 快捷键 / 托盘刷新；可选三档缩放离屏菜单 |
+| tests/ExplorerTabs.Tests/ResponsivenessTests.DuplicatePlacementUiTests / WorkspaceUiTests.StartupRecoveryOfferTests / Program.AllMissingJournalTests / StartupRecoveryTests | 复制锚点 / 尾插控件复用、全失效仅清日志 / 启动分流与横条显式会话重开；fake 与独立日志，不读实际用户数据 |
 | tests/ExplorerTabs.Tests/Program.cs、FeatureTests.cs、CreationUiTests.cs、ShellInteropTests.cs | 基线断言、fake Shell、自建透明窗口、隐藏 UI 与原生 ABI stub |
 | scripts/build.ps1、scripts/package.ps1、build.bat / test.bat / verify.bat / clean.bat / run.bat / dev.bat / ci.bat、package.bat、manager.sh、Directory.Build.props | net48 / x64 / 版本单一来源、受保护开发快照、可选安全 smoke；.bat 仅做参数透传与前置检查；dev.bat 构建后启动开发快照，运行中宿主需用户确认后才关闭；package 产出 dev zip + release unpack/zip，运行中宿主需用户确认后才关闭 |
 | scripts/PackageTransaction.ps1、scripts/test-package.ps1 | 包路径约束、双目录发布 / 回滚、zip 全项校验；fake 进程 / 构建与独立 fixture 的打包故障注入，不写真实 dist |
@@ -71,7 +72,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 |---|---|---|
 | 产品 / 旧版身份 | ProductIdentity.GetStateDirectory / GetMutexName、Program.Main、BrandingUnitTests | 继续旧 LocalAppData 目录与 per-user Local mutex；仅测试合成身份，不争用实际宿主 |
 | 灰框 / 空栏 | MainForm.Chrome.cs 的 CreateParams / WndProc、NativeWindowApi.MeasureEmbeddedTitleInset / EmbeddedViewportBounds / Layout | 保留原生 thick frame 与默认 NC 计算；仅精确 Explorer 嵌入根窗口裁切，不改 Ribbon / 恢复快照 |
-| 新建 / 复制 | MainForm.CreateTabAsync / QueueCreateFromMenu、ExplorerCreationWorkflow.Run / Verify、IExplorerCreationBackend.IsAt | 15 秒；排除已有与受管 HWND，核验后延迟呈现；结果 using / Dispose，成功 MarkAttached；迟到不接管；“此电脑”token 跳过 DirectoryExists，创建后用 PIDL `ILIsEqual` 精确匹配 |
+| 新建 / 复制 | MainForm.CreateTabAsync / QueueCreateFromMenu / AttachCreated / AttachCreatedCore、ExplorerCreationWorkflow.Run / Verify、IExplorerCreationBackend.IsAt | 15 秒；复制来源引用锚点、当前右侧插入、来源消失退尾，普通 / workspace 尾插；排除已有与受管 HWND，核验后延迟呈现；结果 using / Dispose，成功 MarkAttached；迟到不接管；“此电脑”token 跳过 DirectoryExists，创建后用 PIDL `ILIsEqual` 精确匹配 |
 | 全局快捷键 / 托盘 | MainForm.ApplyGlobalHotkey / ToggleHostVisibility / MinimizeHostForHotkey / HideHostForHotkey / ShowHostFromHotkey / ShowTrayIcon、GlobalHotkeyRegistration.Apply / Probe、MainForm.Chrome.WndProc | Shown 后注册、ApplySettings 重注册 / 失败回滚、Dispose 注销；WM_HOTKEY 仅在非模态 / 非退出时排队；GlobalHotkeyPolicy.Decide 按可见 / 最小化 / 精确前台身份决策；默认最小化、可选托盘隐藏；Show 恢复最后非最小化状态与活动标签 |
 | 托盘菜单 | MainForm.CreateTrayMenu / PopulateTrayMenu / AddExitMenuItems | Opening 重建条目并刷新退出可用状态；“显示 ExplorerTabs”与共用退出项；不改全局热键注册契约 |
 | DPI / 嵌入兼容 | NativeWindowApi.ValidateAttach / AllowDpiMismatch / IsDpiContext / MatchThreadDpiToExplorer / PreferredThreadDpiContext、MainForm.SetCreationControls | 宿主保持 PerMonitor/PMv2；仅低 awareness 子窗口 + PerMonitor/PMv2 宿主 + 有效 DPI 相等时允许跨 context SetParent；其余 mismatch / context 不可读仍拒绝并记录 host/target；自动保存不显示取消 |
@@ -86,7 +87,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 精确关闭 | MainForm.CloseTabAsync、HostController.RequestClose、NativeWindowCloser.RequestClose | 每 session 去重；先持久化；只 WM_CLOSE；不早删日志 |
 | 关闭完成 / 重开 | MainForm.CloseTabAsync / PollClosingWindows / CompleteClosedTabs / ReopenTabAsync、TabManagementPolicy.CloseSuccessor、HostController.PruneTargets / PruneLost | 目录等候最多 150ms，75ms 定时只查待关闭目标；发送请求后立即切左邻 / 右邻；消失并成功清日志才移除标签 / 入最多 20 项重开栈，慢目录不使用过期缓存；6 秒拒绝保留并可重试 |
 | 捕获 / 保存 | MainForm.CaptureWorkspaceAsync / SaveSessionAsync / SaveGroupAsync、WorkspaceCapturePolicy.TimeoutMilliseconds | 每项 2.5 秒；会话预算随标签数增长最高 265 秒，退出独立最高 30 秒；读取失败 / 排序 / 别名 / 活动变化保留旧库，内容相同不重写 |
-| 会话 / 组 / 收藏打开 | MainForm.OpenWorkspaceAsync | 显式串行创建、逐项 15 秒、可取消、成功保留、最后激活保存索引；总量不超过 100 |
+| 会话 / 组 / 收藏打开与启动提示 | MainForm.OpenWorkspaceAsync / ConfigureStartupRecovery / ShowSessionOffer / LayoutSessionOffer / RefreshSessionOfferControls | 显式串行创建、逐项 15 秒、可取消、成功保留、最后激活保存索引；总量不超过 100；启动失效提示不自动创建 |
 | 菜单能力 / 会话 | MainForm.MenuIdle / CanUseTab / CanReadDirectory / CanDetachTabs / CanCaptureWorkspace / CanOpenWorkspace / CreateSessionMenu / ClearSavedSession | 忙碌 / 关闭中 / 读取中 / 恢复态 / 100 标签上限禁冲突项；MenuIdle 不含菜单自身 modalDepth；恢复快照深复制后追加，清除不删收藏 / 组 / 标签 |
 | 菜单生命周期 | MainForm.ShowManagedMenu / ShowManagedMenuAtScreenPoint / RegisterManagedMenu / RegisterMenuLifetime / QueueManagedMenuCleanup / ReleaseClosedManagedMenus / DisposeManagedMenus / PopulateTabMenu / QueueMenuAction | Closed 只排队；临时菜单延后 Dispose，持久标签菜单只释放 scope 并在 Opening 更新；快速重开复用旧 scope；按钮移除 / 宿主销毁才释放持久菜单，销毁不恢复窗口 |
 | 收藏 / 组管理 | MainForm.CreateLibraryMenu / ShowLibraryMenu / ShowLibraryManager / AddFavoriteAsync / AddBookmark / CommitLibrary、LibraryManagerDialog | 条目深复制后直接打开 / 追加；修改集中管理弹窗；只读库禁修改不禁打开；持久化成功才换内存，删除记录不关窗口；保存或打开时提交副本修改，取消丢弃 |
@@ -96,7 +97,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | 窗口尺寸记忆 | MainForm.InitializeWindowPlacement / OnLoad / CaptureWindowPlacement / RestoreHostWindowState、WindowPlacementTracker.Capture、SettingsLayoutPolicy.Restore | 构造只预定位到目标屏；OnLoad 一次性恢复物理矩形；Resize / LocationChanged 捕获，最小化不覆盖普通矩形 / 最大化状态；退出统一经 CurrentSettings 保存 |
 | 设置 | SettingsDialog、MainForm.ShowSettings / ApplySettings / CurrentSettings / SaveSettingsOnExit、GlobalHotkeyDefinition、SettingsLayoutPolicy、AppSettingsStore | 入口在应用菜单、Ctrl+, 与命令面板；左导航三页；wrap 默认关闭；目录预设含“此电脑”；全局快捷键仅 Ctrl/Alt/Shift + A–Z/0–9/F1–F12，默认停用；切后台隐藏到托盘默认不勾选，快捷键页可滚动；重复宿主快捷键 / 已被占用时内联拒绝；22 操作可下拉重绑 / 留空禁用；保存成功才应用；正常退出保存最后普通 Bounds / 非最小化 Maximized，首次 OnLoad 完成缩放后恢复，后续显示不重置尺寸 |
 | 正常退出 / 关闭 | MainForm.OnClosingWithSession → OnClosing、CloseSessionsForExit / CompleteExit / RequestExitByClosingSessions / CloseRestoringWindows | 预保存普通目录；用户关闭（X / Alt+F4 / 应用菜单关闭）先对所有 Attached 会话发精确 WM_CLOSE，全部消失才退出，10 秒未关闭则取消退出并保留宿主；只有分离菜单的“恢复窗口并退出宿主”走 detach / restore；都不 kill 进程 |
-| 分离 / 事故恢复 | HostController.Detach / DetachAll、Program.RecoverBeforeStartup | 保持隐藏恢复结构，再显示 / 重绘 / 任务栏注册；事故记录优先于目录重开 |
+| 分离 / 事故恢复 | HostController.Detach / DetachAll、Program.RecoverBeforeStartup / ExecuteStartupRecovery / StartupRecoveryDetails、RecoveryJournal.TryClearAllMissing | 全失效只原子清日志、零窗口操作；存活 / 未知仍确认，失败阻止启动；主界面显式重开目录 |
 | 打包 / 出包目录 | scripts/package.ps1 的 Invoke-Build / Copy-AppFiles / Write-BuildInfo / New-Zip、PackageTransaction.ps1 的 Assert-PackagePath / Test-PackageZip / Publish-PackageSet、package.bat | 唯一暂存目录 + 文件锁；程序集版本 / zip 完整性通过才事务发布 dev / release，失败回滚、保留历史；不生成 setup.exe；运行中宿主仍须明确 Y 确认 |
 
 ## 3. 重点链路与易踩坑
@@ -107,6 +108,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - 目录按 QueryService / QueryActiveShellView / GetWindow 的自己视图匹配；有视图时否决冲突的自动化 HWND。不用公共宿主根、标题、PID 或枚举顺序回退。PIDL 优先，精确匹配的 LocationURL 仅作视图不可用回退。
 - 窗口关闭与分离不同：close 不 Restore、不先删除标签；请求拒绝仍受管。PruneLost 日志失败时可重试但不得恢复已消失目标。未知身份查询错误不当作消失。
 - recovery.json 保存活窗口原结构；workspace.json 仅普通目录 / 顺序 / 别名 / active index。后者不含 HWND、选中项、滚动或浏览历史，不能替代事故恢复。
+- 启动 `TryClearAllMissing` 对死 owner 的全部记录仅查询完整身份：全不匹配才原子写空副本，永不 Restore / Recover；有匹配 / UNKNOWN 则仍人工确认，写失败不继续启动。线程 / 类名查询返回 0 但 HWND 仍在也属于 UNKNOWN。静默清理成功才传 `ConfigureStartupRecovery`，横条分别显示原窗口数量与保存目录数量，用户点击深复制快照后才重开；无快照不猜目录、关闭记住会话仅引导菜单、暂不打开本次不再弹。
 - 会话捕获是有界串行的 best-effort 时间点集合，不冻结 Explorer 自身导航。任何读取失败 / 标签结构变化都不覆盖旧库，不把部分成功伪装成完整会话。
 - 目录读取与创建各自单飞。取消任务可立即完成，但卡住 COM 的 gate 保留到工作线程实际退出；不 abort、不无限增线程。结果与 gate 释放间允许短有界等待。
 - ContextMenuStrip.Closed 尚在 WinForms SetVisibleCore / ModalMenuFilter 中，禁止同步 Dispose。临时菜单 / 模态范围延后释放，取消 Opening 不依赖 Closed；菜单点击也不得同步重建标签或分离，统一 QueueUi / QueueMenuAction 后执行。
@@ -160,7 +162,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 - 打包前检测运行中的 ExplorerTabs：列出 PID / 路径并询问，默认取消；只有明确输入 `Y` 才先 `CloseMainWindow`（12 秒）再对剩余宿主强制结束。非交互输入直接拒绝并保留 dist；不直接操作用户 Explorer。zip 用 .NET `ZipFile`，无需外部压缩器。
 
 ### 3.8 响应性与隐藏宿主
-- CreateTabAsync 开始即 ShowPendingCreation；Guid + CTS 绑定一次请求，不伪造 HWND、不进入 Sessions / recovery / workspace。保留当前内容；成功 Attach / Activate / MarkAttached 后原位绑定按钮；取消 / 失败删占位，迟到窗口仍独立。日志分段统计 Shell ready、durable attach、activation / UI ready，不代表 Explorer 实际像素完成。
+- CreateTabAsync 开始即 ShowPendingCreation；Guid + CTS 绑定一次请求，不伪造 HWND、不进入 Sessions / recovery / workspace。复制占位以 PendingSource 引用紧跟来源、刷新跟随移动、来源移除退尾；普通新建尾插。保留当前内容；成功 Attach / Activate / MarkAttached 后由 AttachCreatedCore 按来源当前索引 MoveTab，再原位绑定按钮；取消 / 失败删占位，迟到窗口仍独立。日志分段统计 Shell ready、durable attach、activation / UI ready，不代表 Explorer 实际像素完成。
 - CloseTabAsync 立即显示关闭中，目录读取最多等 150ms；超时取消并观察 / 丢弃迟到结果，不把过期缓存加入重开栈。RequestClose 仍先持久化日志再精确 WM_CLOSE；请求后切邻居但保留 closing 标签。75ms closeMonitor 只 PruneTargets；原 1500ms PollWindows 兜底；真实消失与日志提交成功前不得移除。模态 / 交互期间延后，6 秒未关保留并可重试。
 - CanPresentExplorer 同时约束 Visible / minimized / modalDepth / closing / disposingUi；创建完成、EnsureActive、Resize、Activated、模态退出与热键呼出遵守策略。Activate(visible:false) 更新活动模型但不 Layout / Show，回滚也不复活隐藏窗口。
 - WorkspaceCapturePolicy：预算 5000 + min(count,100) × 2600ms，自动最少 7 秒、手动最少 30 秒、最高 265 秒；退出另限最多 30 秒。完整性 / 顺序 / 活动校验失败或超时保留旧库，不承诺退出能读完 100 个慢目录。
@@ -190,15 +192,17 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | TabStrip.SetTrailingControl / MiddleClose / TooltipFor / TabButton.HitClose | 尾部动作控件不参与标签测宽 / 插入点，换行时与最后一个标签同排（优先微缩最后标签、必要时一起下移）；× 固定预留列、仅 Attached 可命中且不启动拖动；中键 / × 只触发关闭回调，由宿主复用精确 `WM_CLOSE`，不分离 / 不持久化；Tooltip 只读缓存目录 |
 | TabStrip 滚动 / 布局 | 不使用 AutoScroll 与原生 WS_HSCROLL / WS_VSCROLL；自绘 4 逻辑 px 圆角浮条，横向仅单行溢出、纵向仅多行超过 MaximumTabRows，两轴不会同时出现；ApplyScroll 统一钳制，Reveal / 拖动自动滚动 / 滚轮共用；滚动条按下由标签栏捕获处理，不启动窗口拖动 |
 | DialogStyle.Apply / ShapeChildren / DialogTitleBar | 仅作用于宿主自建 `ShellDialog`；无边框自定义标题栏、关闭按钮与拖动；窗口 region 与子控件裁剪共用同一 GraphicsPath（外 / 内圆角相差 1px），只裁掉贴近窗口四条边的角；`Form.BackColor=DialogBorder` 形成实色 1px 环，无描边 / 无 CS_DROPSHADOW；不接管系统对话框、不改变窗口身份 |
-| WindowIdentity / NativeWindowApi.Matches | HWND + PID / TID / 进程启动 ticks / 映像 / 类名，不仅 HWND |
+| WindowIdentity / NativeWindowApi.Matches / MatchQuerySucceeded | HWND + PID / TID / 进程启动 ticks / 映像 / 类名，不仅 HWND；查询失败时只有 HWND 确认消失才 Missing，否则 UNKNOWN 保留记录 |
 | NativeWindowApi.IsExplorer | 仅 CabinetWClass / ExploreWClass，宿主映像限 `%WINDIR%\explorer.exe` 或 `%WINDIR%\System32\rundll32.exe`（ShellBrowserWindow 注册的 LocalServer32）；创建、加入、关闭、任务栏、事故恢复共用，不按标题 / PID / 枚举顺序猜测 |
 | NativeWindowApi.ValidateAttach / AllowDpiMismatch | 嵌入前读取 host/target DPI context 与 `GetDpiForWindow`；context 不可读、反向 mismatch、或有效 DPI 不等时抛含双方 context/DPI 的错误；仅低 awareness → PerMonitor/PMv2 且有效 DPI 相等时允许并记录 `attach.dpi-mismatch`；Grouped 不检查 |
 | NativeWindowApi.MatchThreadDpiToExplorer / PreferredThreadDpiContext | 仅在创建任何 WinForms HWND 前调用；只采纳 PerMonitorV2（其次 PerMonitor）候选，使用伪句柄 -4/-3；无 per-monitor 候选时保留 manifest 的 PerMonitorV2，绝不降级为 Unaware/System |
 | NativeWindowApi.ChangeParent | 跨进程 SetParent 以实际 `GetParent` 复核，避免把成功调用留下的非零 last-error 误判为失败；不改变恢复日志与身份校验 |
 | MainForm.CanPresentExplorer / HostController.Activate | 不可见 / 最小化 / 模态 / 退出状态不呈现 Explorer；visible=false 的激活与失败回滚均保持隐藏 |
 | MainForm.MenuIdle / CanUseTab / CanCaptureWorkspace / CanOpenWorkspace | 菜单自身 modalDepth 不参与能力判断；Busy / 关闭 / 单飞目录 / 只读 / 容量按动作限制，延后执行再次验证；动态收藏 / 组 / 会话使用深复制目标，不从活库重取 |
-| TabStrip.Render / ShowPendingCreation / CompletePendingCreation / RemovePendingCreation / SetCloseReading | 按会话复用控件 / 菜单；占位禁用选择 / 关闭 / 菜单 / 拖动，成功原位绑定；读取 / 请求关闭期间隐藏 ×；仅真实消失后移除 |
+| TabStrip.Render / ShowPendingCreation / CompletePendingCreation / RemovePendingCreation / SetCloseReading / TabButton.PendingSource | 按会话复用控件 / 菜单；占位来源引用控制右侧位置、来源消失退尾，禁用选择 / 关闭 / 菜单 / 拖动；成功原位绑定并清锚点；读取 / 请求关闭期间隐藏 ×；仅真实消失后移除 |
 | MainForm.SetCreationControls / UpdateCancelAffordance | 取消按钮只反映新建或非静默 workspace 操作；显示延迟约 450 ms，结束立即隐藏；`workspaceOperationSilent` 仅由自动会话保存设置，`PollWindows` 不重启计时 |
+| MainForm.ConfigureStartupRecovery / ShowSessionOffer | 仅本次成功静默清理的失效数量；不写 JSON；与 LastSession 目录数分开展示，单一可换行横条；点击前零创建，点击快照复制后排队再验能力，暂不打开不删库且本次不再邀请 |
+| RecoveryJournal.TryClearAllMissing | 死 owner + 全部完整身份不匹配才原子写保留 owner 的空副本；不修改输入，不 Restore / Recover；未知 / 存活回人工，写失败阻止启动 |
 | RecoveryJournal / AppSettingsStore / WorkspaceLibraryStore | 原子写；破坏性窗口操作前日志先行；坏原文件保留并禁用本次持久化 |
 
 ## 5. 构建与安全验证

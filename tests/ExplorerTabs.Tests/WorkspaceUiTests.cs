@@ -93,6 +93,7 @@ namespace ExplorerTabs.Tests
                     Check(restoreService.CreatedPaths.SequenceEqual(saved.Tabs.Select(t => t.Directory)) && restoreHost.Sessions.Select(s => s.CustomTitle).SequenceEqual(saved.Tabs.Select(t => t.Alias)), "explicit restore serializes creation order and preserves aliases");
                     Check(restoreHost.Active == restoreHost.Sessions[0] && !UiField<FlowLayoutPanel>(form, "sessionOffer").Visible, "restore selects saved active index only after completed creation");
                 }
+                StartupRecoveryOfferTests(directory);
                 var cancelHost = new HostController(new FakeWindows(), new FakeStore()); var cancelService = new WorkspaceService { HoldCreate = true };
                 using (var form = WorkspaceForm(cancelHost, cancelService, directory, new WorkspaceStore()))
                 {
@@ -119,6 +120,68 @@ namespace ExplorerTabs.Tests
             {
                 SynchronizationContext.SetSynchronizationContext(context);
                 foreach (var own in Directory.GetFiles(directory)) File.Delete(own); Directory.Delete(directory);
+            }
+        }
+        private static void StartupRecoveryOfferTests(string directory)
+        {
+            var saved = SampleWorkspace(); var store = new WorkspaceStore { Value = new WorkspaceLibrary { LastSession = saved } };
+            var host = new HostController(new FakeWindows(), new FakeStore()); var service = new WorkspaceService();
+            using (var form = WorkspaceForm(host, service, directory, store))
+            {
+                MainType.GetMethod("ConfigureStartupRecovery")!.Invoke(form, new object[] { 9 });
+                UiCall(form, "ShowSessionOffer");
+                var offer = UiField<FlowLayoutPanel>(form, "sessionOffer");
+                var text = UiField<Label>(form, "sessionOfferText");
+                var restore = UiField<Button>(form, "sessionOfferRestore");
+                Check(offer.Visible && text.Text.Contains("9 个原窗口") && text.Text.Contains(saved.Tabs.Count + " 个目录") && service.Creates == 0,
+                    "all-missing startup distinguishes lost windows from saved directories without creating Explorer");
+                MainType.GetMethod("ConfigureLibrary")!.Invoke(form, new object?[] { null, store.Value });
+                Check(restore.Enabled, "read-only readable session still permits explicit reopening");
+                restore.PerformClick();
+                UiField<WorkspaceLibrary>(form, "library").LastSession!.Tabs[0].Directory = @"C:\ChangedAfterClick";
+                Check(PumpUntil(() => host.Sessions.Count == saved.Tabs.Count && UiField<CancellationTokenSource?>(form, "workspaceOperation") == null, 3000),
+                    "startup invitation opens only after its explicit queued click");
+                Check(service.CreatedPaths.SequenceEqual(saved.Tabs.Select(t => t.Directory)) && !offer.Visible && store.Saves == 0,
+                    "startup click uses a deep-copied snapshot and leaves prior library untouched");
+            }
+            var dismissedStore = new WorkspaceStore { Value = new WorkspaceLibrary { LastSession = SampleWorkspace() } };
+            using (var form = WorkspaceForm(new HostController(new FakeWindows(), new FakeStore()), new WorkspaceService(), directory, dismissedStore))
+            {
+                MainType.GetMethod("ConfigureStartupRecovery")!.Invoke(form, new object[] { 9 }); UiCall(form, "ShowSessionOffer");
+                UiField<Button>(form, "sessionOfferDismiss").PerformClick(); UiCall(form, "ShowSessionOffer");
+                Check(!UiField<FlowLayoutPanel>(form, "sessionOffer").Visible && dismissedStore.Saves == 0 && dismissedStore.Value.LastSession != null,
+                    "dismissal survives invitation refresh and never deletes or overwrites saved session");
+            }
+            foreach (bool hasSnapshot in new[] { false, true })
+            using (var form = WorkspaceForm(new HostController(new FakeWindows(), new FakeStore()), new WorkspaceService(), directory,
+                new WorkspaceStore { Value = new WorkspaceLibrary { LastSession = hasSnapshot ? SampleWorkspace() : null } }, new AppSettings { RememberSession = false }))
+            {
+                Check(!UiField<FlowLayoutPanel>(form, "sessionOffer").Visible, "remember-session disabled preserves ordinary startup behavior");
+                MainType.GetMethod("ConfigureStartupRecovery")!.Invoke(form, new object[] { 9 }); UiCall(form, "ShowSessionOffer");
+                Check(UiField<FlowLayoutPanel>(form, "sessionOffer").Visible && !UiField<Button>(form, "sessionOfferRestore").Visible &&
+                    UiField<Label>(form, "sessionOfferText").Text.Contains(hasSnapshot ? "会话与恢复" : "没有可用"),
+                    "missing-window notice handles absent snapshots and disabled preference without a misleading reopen button");
+            }
+            using (var form = WorkspaceForm(new HostController(new FakeWindows(), new FakeStore()), new WorkspaceService(), directory,
+                new WorkspaceStore { Value = new WorkspaceLibrary { LastSession = SampleWorkspace() } }))
+            {
+                MainType.GetMethod("ConfigureStartupRecovery")!.Invoke(form, new object[] { 9 }); UiCall(form, "ShowSessionOffer");
+                UiCall(form, "ClearSavedSession");
+                Check(!UiField<FlowLayoutPanel>(form, "sessionOffer").Visible && UiField<SavedWorkspace?>(form, "offeredSession") == null,
+                    "clearing saved session hides invitation and drops its deleted snapshot");
+                UiCall(form, "ShowSessionOffer");
+                Check(!UiField<Button>(form, "sessionOfferRestore").Visible && UiField<Label>(form, "sessionOfferText").Text.Contains("没有可用"),
+                    "missing-window invitation refresh cannot reopen a deleted snapshot");
+            }
+            foreach (float scale in new[] { 1f, 1.25f, 1.5f })
+            using (var form = WorkspaceForm(new HostController(new FakeWindows(), new FakeStore()), new WorkspaceService(), directory,
+                new WorkspaceStore { Value = new WorkspaceLibrary { LastSession = SampleWorkspace() } }))
+            {
+                MainType.GetMethod("ConfigureStartupRecovery")!.Invoke(form, new object[] { 100 }); UiCall(form, "ShowSessionOffer");
+                form.Scale(new SizeF(scale, scale)); form.ClientSize = new Size((int)(736 * scale), (int)(516 * scale)); form.PerformLayout();
+                var offer = UiField<FlowLayoutPanel>(form, "sessionOffer"); UiCall(form, "LayoutSessionOffer"); offer.PerformLayout(); form.PerformLayout();
+                Check(offer.Controls.Cast<Control>().Where(c => c.Visible).All(c => c.Left >= 0 && c.Right <= offer.ClientSize.Width && c.Bottom <= offer.ClientSize.Height),
+                    "startup invitation text and buttons fit minimum width at scale " + scale);
             }
         }
         private static void MenuLifetimeTests(string directory)

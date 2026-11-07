@@ -28,10 +28,21 @@ namespace ExplorerTabs.App
         private bool workspaceOperationSilent;
         private bool workspaceTouched, exitPreparing, exitCaptureDone;
         private DateTime nextAutosave = DateTime.UtcNow.AddSeconds(20);
-        private readonly FlowLayoutPanel sessionOffer = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8, 4, 8, 4), BackColor = Color.FromArgb(230, 239, 252), Visible = false };
+        private readonly FlowLayoutPanel sessionOffer = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(8, 4, 8, 4), BackColor = Color.FromArgb(230, 239, 252), Visible = false };
+        private readonly Label sessionOfferText = new Label { AutoSize = true, Margin = new Padding(4, 5, 4, 5) };
+        private readonly ActionButton sessionOfferRestore = new ActionButton("重新打开上次会话", true) { Width = 176, Height = 30 };
+        private readonly ActionButton sessionOfferDismiss = new ActionButton("暂不打开") { Width = 88, Height = 30 };
+        private SavedWorkspace? offeredSession;
+        private int startupMissingWindows;
+        private bool sessionOfferDismissed;
         private IExplorerDirectoryService? DirectoryReader => explorerTabs as IExplorerDirectoryService;
         public void ConfigureLibrary(IWorkspaceLibraryStore? store, WorkspaceLibrary value)
         { WorkspaceLibrary.Validate(value); libraryStore = store; library = value.Copy(); ShowSessionOffer(); }
+        public void ConfigureStartupRecovery(int missingWindows)
+        {
+            if (missingWindows < 1 || missingWindows > 100) throw new ArgumentOutOfRangeException(nameof(missingWindows));
+            startupMissingWindows = missingWindows;
+        }
         private void InitializeWorkspaceUi(FlowLayoutPanel toolbar, FlowLayoutPanel toolbarRight)
         {
             commandToolbar = toolbar;
@@ -56,9 +67,23 @@ namespace ExplorerTabs.App
             foreach (IconButton button in CommandButtons()) button.BackColor = HostTheme.Canvas;
             tabs.SetTrailingControl(newTab);
             UpdateToolbarHints();
-            var restore = new ActionButton("恢复上次会话", true) { Width = 128, Height = 30 }; var dismiss = new ActionButton("暂不恢复") { Width = 88, Height = 30 };
-            restore.Click += (_, __) => { if (library.LastSession != null) QueueUi(() => OpenWorkspaceAsync(library.LastSession.Copy())); }; dismiss.Click += (_, __) => sessionOffer.Visible = false;
-            sessionOffer.Controls.AddRange(new Control[] { new Label { Text = "上次的标签目录已保存", AutoSize = true, Margin = new Padding(4, 7, 12, 0) }, restore, dismiss });
+            sessionOfferRestore.Click += (_, __) =>
+            {
+                if (offeredSession == null || !CanOpenWorkspace(offeredSession)) return;
+                var snapshot = offeredSession.Copy();
+                QueueUi(() =>
+                {
+                    if (!CanOpenWorkspace(snapshot)) return Task.CompletedTask;
+                    sessionOfferDismissed = true;
+                    return OpenWorkspaceAsync(snapshot);
+                });
+            };
+            sessionOfferDismiss.Click += (_, __) => { sessionOfferDismissed = true; sessionOffer.Visible = false; };
+            sessionOfferRestore.AccessibleDescription = "按保存的目录创建新的 Explorer 标签；不恢复原窗口的选中项、滚动位置或导航历史。";
+            chromeTips.SetToolTip(sessionOfferRestore, sessionOfferRestore.AccessibleDescription);
+            sessionOffer.Controls.AddRange(new Control[] { sessionOfferText, sessionOfferRestore, sessionOfferDismiss });
+            sessionOffer.SetFlowBreak(sessionOfferText, true);
+            sessionOffer.SizeChanged += (_, __) => LayoutSessionOffer();
             Controls.Add(sessionOffer); Controls.SetChildIndex(sessionOffer, Controls.GetChildIndex(chrome!) - 1);
             tabs.ConfigureLayout(settings.WrapTabs, settings.MaximumTabRows);
         }
@@ -142,7 +167,30 @@ namespace ExplorerTabs.App
             if (!string.IsNullOrEmpty(chord) && item is ToolStripMenuItem menuItem)
             { menuItem.ShowShortcutKeys = true; menuItem.ShortcutKeyDisplayString = chord; }
         }
-        private void ShowSessionOffer() => sessionOffer.Visible = settings.RememberSession && library.LastSession != null && controller.Sessions.Count == 0;
+        private void ShowSessionOffer()
+        {
+            offeredSession = library.LastSession?.Copy();
+            bool canOffer = settings.RememberSession && offeredSession != null;
+            if (startupMissingWindows > 0)
+            {
+                sessionOfferText.Text = $"上次的 {startupMissingWindows} 个原窗口已失效，无法恢复原窗口。\n" +
+                    (offeredSession == null ? "没有可用的已保存会话；窗口标题不能用于重建目录，请手动新建标签。" :
+                    canOffer ? $"已保存 {offeredSession.Tabs.Count} 个目录，可重新打开为新标签。" :
+                    $"已保存 {offeredSession.Tabs.Count} 个目录；记住会话已关闭，可从“会话与恢复”菜单手动打开。");
+            }
+            else sessionOfferText.Text = offeredSession == null ? "" : $"上次会话已保存 {offeredSession.Tabs.Count} 个目录，可重新打开为新标签。";
+            sessionOfferRestore.Visible = canOffer;
+            RefreshSessionOfferControls();
+            sessionOffer.Visible = !sessionOfferDismissed && controller.Sessions.Count == 0 && (startupMissingWindows > 0 || canOffer);
+            LayoutSessionOffer();
+        }
+        private void RefreshSessionOfferControls() => sessionOfferRestore.Enabled = settings.RememberSession &&
+            offeredSession != null && CanOpenWorkspace(offeredSession);
+        private void LayoutSessionOffer()
+        {
+            int width = Math.Max(1, sessionOffer.ClientSize.Width - sessionOffer.Padding.Horizontal - sessionOfferText.Margin.Horizontal);
+            if (sessionOfferText.MaximumSize.Width != width) sessionOfferText.MaximumSize = new Size(width, 0);
+        }
         private void ShowAddWindowsMenu()
         {
             if (closing || exitPreparing || workspaceOperation != null || creation != null || explorerTabs.IsBusy) return;
@@ -272,6 +320,7 @@ namespace ExplorerTabs.App
         {
             if (libraryStore == null) throw new InvalidOperationException("会话库不可用，未保存。请备份并修复 workspace.json 后重启。");
             libraryStore.Save(candidate); library = candidate.Copy();
+            if (sessionOffer.Visible) ShowSessionOffer();
         }
         private ContextMenuStrip CreateSessionMenu()
         {

@@ -99,9 +99,11 @@ namespace ExplorerTabs.Core
             // access errors so a recovery journal is not discarded while a child still exists.
             if (!NativeMethods.IsWindow(identity.Hwnd)) return false;
             uint thread = NativeMethods.GetWindowThreadProcessId(identity.Hwnd, out uint pid);
+            if ((thread == 0 || pid == 0) && !MatchQuerySucceeded(false, NativeMethods.IsWindow(identity.Hwnd), "GetWindowThreadProcessId")) return false;
             if (thread != identity.ThreadId || pid != identity.ProcessId) return false;
             var className = new StringBuilder(256);
-            NativeMethods.GetClassName(identity.Hwnd, className, className.Capacity);
+            int classLength = NativeMethods.GetClassName(identity.Hwnd, className, className.Capacity);
+            if (classLength == 0 && !MatchQuerySucceeded(false, NativeMethods.IsWindow(identity.Hwnd), "GetClassName")) return false;
             if (className.ToString() != identity.ClassName) return false;
             try
             {
@@ -115,6 +117,13 @@ namespace ExplorerTabs.Core
                 // Access denied and other unknown states MUST retain recovery data.
                 throw;
             }
+        }
+
+        internal static bool MatchQuerySucceeded(bool querySucceeded, bool windowExists, string operation)
+        {
+            if (querySucceeded) return true;
+            if (!windowExists) return false;
+            throw new Win32Exception(0, operation + " 无法读取仍存在窗口的身份（UNKNOWN）。");
         }
 
         public WindowSnapshot Capture(WindowIdentity identity)

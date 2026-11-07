@@ -168,7 +168,7 @@ namespace ExplorerTabs.App
             request.CancelAfter(15000);
             var requestId = Guid.NewGuid(); creationRequestId = requestId;
             var elapsed = Stopwatch.StartNew();
-            tabs.ShowPendingCreation(requestId);
+            tabs.ShowPendingCreation(requestId, source);
             HostingMode requestedMode = SelectedMode;
             SetCreationControls(true);
             status.Text = source == null ? "正在后台准备新标签；可取消…" : "正在读取并复制此标签的目录…";
@@ -184,7 +184,7 @@ namespace ExplorerTabs.App
                 if (closing || IsDisposed) return;
                 if (SelectedMode != requestedMode) throw new InvalidOperationException("挂载模式已改变，新建窗口保持独立。");
                 log.Write($"Create Shell ready; elapsedMs={elapsed.ElapsedMilliseconds}");
-                AttachCreated(result, requestedMode);
+                AttachCreatedCore(result, requestedMode, source);
                 log.Write($"Create attach/activate/UI ready; elapsedMs={elapsed.ElapsedMilliseconds}");
                 log.Write($"Create attached HWND=0x{result.Identity.Handle:X}; directory={result.Directory}");
                 }
@@ -208,7 +208,10 @@ namespace ExplorerTabs.App
             }
         }
 
-        private void AttachCreated(CreatedExplorer result, HostingMode requestedMode)
+        private void AttachCreated(CreatedExplorer result, HostingMode requestedMode) =>
+            AttachCreatedCore(result, requestedMode, null);
+
+        private void AttachCreatedCore(CreatedExplorer result, HostingMode requestedMode, WindowSession? source)
         {
             var elapsed = Stopwatch.StartNew();
             WindowSession session;
@@ -227,6 +230,10 @@ namespace ExplorerTabs.App
             directoryCache[session] = result.Directory;
             workspaceTouched = true;
             presentation.Track(session.Identity, "explicit-create");
+            // Attach appends; persist the duplicate's position in the model, not only in the strip.
+            // Resolve the source by reference now so moves during creation follow its latest order.
+            int sourceIndex = source == null ? -1 : controller.Sessions.ToList().IndexOf(source);
+            if (sourceIndex >= 0) controller.MoveTab(session, sourceIndex + 1);
             if (creationRequestId.HasValue) tabs.CompletePendingCreation(creationRequestId.Value, session);
             RefreshTabs(); tabs.Reveal(session);
         }
@@ -241,6 +248,7 @@ namespace ExplorerTabs.App
             foreach (WelcomePanel welcome in content.Controls) welcome.SetPending(pending || workspaceOperation != null || explorerTabs.IsBusy);
             mode.Enabled = !pending && workspaceOperation == null && controller.Sessions.Count == 0;
             SyncShortcutScope();
+            RefreshSessionOfferControls();
         }
 
         private void UpdateCancelAffordance(bool wanted)
@@ -527,7 +535,7 @@ namespace ExplorerTabs.App
             ShowShortcut(close, ShortcutChord(HostCommand.CloseTab));
             var duplicate = menu.Items.Add("复制标签", null, (_, __) => QueueCreateFromMenu(session));
             duplicate.Enabled = CanUseTab(session) && controller.Sessions.Count < 100;
-            duplicate.ToolTipText = "将此标签的当前目录打开为新标签，不复制文件。";
+            duplicate.ToolTipText = "在此标签右侧打开当前目录的新标签，不复制文件。";
             ShowShortcut(duplicate, ShortcutChord(HostCommand.DuplicateTab));
             menu.Items.Add(new ToolStripSeparator());
             var favorite = menu.Items.Add("收藏此目录…", null, (_, __) => QueueUi(() => AddFavoriteAsync(session)));

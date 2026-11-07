@@ -83,6 +83,7 @@ namespace ExplorerTabs.App
             Func<WindowSession, string?>? directoryLookup = null)
         {
             var existing = Controls.OfType<TabButton>().Where(b => b.Session != null).ToArray();
+            var pendingButtons = Controls.OfType<TabButton>().Where(b => b.Session == null).ToArray();
             if (!existing.Select(b => b.Session).SequenceEqual(sessions)) CancelPointer();
             this.directoryLookup = directoryLookup;
             SuspendLayout();
@@ -111,8 +112,10 @@ namespace ExplorerTabs.App
                     tips.SetToolTip(button, TooltipFor(session, directoryLookup?.Invoke(session)));
                     button.Width = MeasureTabWidth(button);
                     Controls.SetChildIndex(button, index++);
+                    foreach (var pending in pendingButtons.Where(b => b.PendingSource == session))
+                        Controls.SetChildIndex(pending, index++);
                 }
-                foreach (var pending in Controls.OfType<TabButton>().Where(b => b.Session == null).ToArray())
+                foreach (var pending in pendingButtons.Where(b => b.PendingSource == null || !sessions.Contains(b.PendingSource)))
                     Controls.SetChildIndex(pending, index++);
                 if (trailing != null && Controls.Contains(trailing)) Controls.SetChildIndex(trailing, Controls.Count - 1);
             }
@@ -131,11 +134,13 @@ namespace ExplorerTabs.App
             button.Invalidate();
         }
 
-        public void ShowPendingCreation(Guid requestId)
+        public void ShowPendingCreation(Guid requestId, WindowSession? source = null)
         {
-            var button = new TabButton(this, null) { PendingRequestId = requestId, Text = "正在打开…", Enabled = false };
+            var button = new TabButton(this, null) { PendingRequestId = requestId, PendingSource = source, Text = "正在打开…", Enabled = false };
             ConfigureButton(button, false); button.AccessibleName = button.Text; button.Width = MeasureTabWidth(button);
             Controls.Add(button);
+            var anchor = source == null ? null : Controls.OfType<TabButton>().FirstOrDefault(b => b.Session == source);
+            if (anchor != null) Controls.SetChildIndex(button, Controls.GetChildIndex(anchor) + 1);
             if (trailing != null && Controls.Contains(trailing)) Controls.SetChildIndex(trailing, Controls.Count - 1);
             UpdateRows();
         }
@@ -641,7 +646,8 @@ namespace ExplorerTabs.App
             private bool releasingMouse;
             public WindowSession? Session { get; private set; }
             public Guid? PendingRequestId { get; set; }
-            public void BindSession(WindowSession session) { Session = session; PendingRequestId = null; Enabled = true; }
+            public WindowSession? PendingSource { get; set; }
+            public void BindSession(WindowSession session) { Session = session; PendingRequestId = null; PendingSource = null; Enabled = true; }
             public bool IsActive { get; set; }
             private bool hovered, closeHovered, closePressed;
             public TabButton(TabStrip strip, WindowSession? session)
