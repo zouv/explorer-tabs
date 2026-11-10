@@ -137,6 +137,19 @@ bash manager.sh package    # 打包
 bash manager.sh check-docs # 文档机械体检
 ```
 
+## manager.sh 命令一览
+
+所有命令通过 `sh manager.sh <命令>` 执行（Windows 用 Git Bash），与 `sh manager.sh help` 一致：
+
+| 命令 | 说明 |
+|---|---|
+| `build` | 构建 Debug / Release 产物 |
+| `test` | 完整安全自动检查（不启动真实 Explorer / 交互宿主 / 全局钩子） |
+| `package` | 打包免安装 zip 到 `dist/` |
+| `run` | 启动已打包的免安装版（显式交互，仅用户要求时） |
+| `check-docs` | 文档体系机械体检 |
+| `help` | 显示本帮助 |
+
 Windows 批处理入口（`build` / `test` / `package` / `run` 与 `manager.sh` 对应）：
 
 ```bat
