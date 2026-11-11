@@ -1,13 +1,13 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-11-11；0.12.0 发布进行中（版本已提升，待提交 / 打包 / 上传）。四项体验修复已实现并通过 1134 项断言，待用户实机复验；真实 Shell、实际系统重启与交互体验不自动操作。
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；当前正式版本 0.11.1，Release https://github.com/zouv/explorer-tabs/releases/tag/v0.11.1；历史 Release 保留。
-最后验证：2026-11-11 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1134 项安全断言（核心 536、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 412、隔离打包 25），零警告 / 零错误（`.runtime/verification-fixes.txt`）。未启动真实交互宿主、未操作用户 Explorer；本轮四项修复与真实 Shell 键鼠交互待用户复验，历史 0.11.1 发布验证见 CHANGELOG。
+状态日期：2026-11-11；无进行中任务。0.12.0 已发布；四项体验修复待用户实机复验，真实 Shell、实际系统重启与交互体验不自动操作。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；当前正式版本 0.12.0，Release https://github.com/zouv/explorer-tabs/releases/tag/v0.12.0；历史 Release 保留。
+最后验证：2026-11-11 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1134 项安全断言（核心 536、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 412、隔离打包 25），零警告 / 零错误（`.runtime/verification-v0.12.0.txt`）；正式包原始二进制在隔离目录复跑 1109 项可执行检查通过（`.runtime/verification-packaged-v0.12.0.txt`），三个附件远端 digest 与下载后 SHA-256 匹配。未启动真实交互宿主、未操作用户 Explorer；本轮四项修复与真实 Shell 键鼠交互待用户复验。
 
-正式入口 `dist/release/unpack/ExplorerTabs.exe`；Release / Debug zip 与 `dist/release/SHA256SUMS.txt` 均已发布。标签 `v0.11.1` 固定指向代码提交 `cc455de`，发布结果文档另提交，不移动标签或因文档收尾重打包。完整发布记录见 CHANGELOG 0.11.1 / ROADMAP P44–P46。
+正式入口 `dist/release/unpack/ExplorerTabs.exe`（0.12.0）；Release / Debug zip 与 `dist/release/SHA256SUMS.txt` 均已发布。标签 `v0.12.0` 固定指向代码提交 `d0468ec`，发布结果文档另提交，不移动标签或因文档收尾重打包。完整发布记录见 CHANGELOG 0.12.0 / ROADMAP P47。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
-- 2026-11-11 四项修复待实机复验（先退出旧宿主，再运行新的 `dev.bat` 或重新打包）：① “退出并保留窗口”后重开不应再出现“上次会话已保存 N 个目录”横条；② “加入窗口”菜单应看到“加入全部窗口”，点击后加入当前全部未接管 Explorer；③ 点 `+` / Ctrl+T 应立即切到带转圈等待页并高亮占位标签，成功切到新窗口，失败 / 取消恢复原标签；④ 托管 Explorer 内 F2 重命名按 Ctrl+A 应全选文件名（含扩展名）。真实 Shell 键鼠行为未自动操作。
+- 2026-11-11 0.12.0 四项修复待实机复验（正式入口已更新；旧版本首次升级可先清除一次旧会话快照）：① “退出并保留窗口”后重开不应再出现“上次会话已保存 N 个目录”横条；② “加入窗口”菜单应看到“加入全部窗口”，点击后加入当前全部未接管 Explorer；③ 点 `+` / Ctrl+T 应立即切到带转圈等待页并高亮占位标签，成功切到新窗口，失败 / 取消恢复原标签；④ 托管 Explorer 内 F2 重命名按 Ctrl+A 应全选文件名（含扩展名）。真实 Shell 键鼠行为未自动操作。
 - 2026-11-07 本轮验证入口为正式 0.11.1 `dist/release/unpack/ExplorerTabs.exe`。先正常退出旧宿主，再手动启动：右键复制中间 / 非活动标签应在该标签右侧占位并完成；系统重启后旧窗口全失效应进入主界面提示手动重开保存目录，无快照不承诺重开。真实 Shell / 实际系统重启尚未操作，完整说明见 CHANGELOG 0.11.1 / ROADMAP P44–P45。
 - 2026-11-01 正式 0.11.0 包包含前三轮改动。正常退出旧宿主后手动运行正式入口；确认应用 / 托盘退出两项的窗口保留结果、收藏 / 组直接打开与管理入口、会话追加恢复、只读 / 忙碌禁用，以及长名称在高 DPI 下的显示；离屏检查不等于真实弹出与键鼠验收。
 
