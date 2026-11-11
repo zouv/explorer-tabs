@@ -18,6 +18,7 @@ namespace ExplorerTabs.App
         private readonly AppLog log;
         private readonly PresentationMonitor presentation;
         private readonly Panel content = new Panel();
+        private readonly PendingCreationPanel pendingView = new PendingCreationPanel { Visible = false };
         private readonly TabStrip tabs = new TabStrip();
         private readonly ComboBox mode = new ComboBox();
         private readonly Label status = new Label();
@@ -86,6 +87,8 @@ namespace ExplorerTabs.App
             content.Dock = DockStyle.Fill;
             content.BackColor = Color.FromArgb(249, 250, 252);
             content.Controls.Add(new WelcomePanel(() => newTab.PerformClick(), () => addWindows.PerformClick()));
+            content.Controls.Add(pendingView);
+            content.Controls.SetChildIndex(pendingView, 0);
             var footer = new Panel { Dock = DockStyle.Bottom, Height = 24, BackColor = HostTheme.Canvas };
             var diagnostic = new IconButton(UiGlyph.Diagnostics, "保存诊断…") { Dock = DockStyle.Right, Width = 32 };
             chromeTips.SetToolTip(diagnostic, "保存诊断日志");
@@ -169,10 +172,18 @@ namespace ExplorerTabs.App
             var requestId = Guid.NewGuid(); creationRequestId = requestId;
             var elapsed = Stopwatch.StartNew();
             tabs.ShowPendingCreation(requestId, source);
+            // Switch the content area immediately; the old Explorer stays intact but hidden until
+            // creation succeeds, fails or the user explicitly selects another tab.
+            pendingView.Begin(source == null ? "正在打开新的 Explorer 窗口…" : "正在复制此标签的目录…",
+                source == null ? "Explorer 正在准备目录，完成后会自动切换。" : "完成前可点击其他标签或取消。");
+            try { controller.SetActiveVisible(false); }
+            catch (Exception error) { log.Write("Pending view could not hide the active window", error); }
+            RefreshTabs();
             HostingMode requestedMode = SelectedMode;
             SetCreationControls(true);
-            status.Text = source == null ? "正在后台准备新标签；可取消…" : "正在读取并复制此标签的目录…";
+            status.Text = source == null ? "正在准备新标签；可取消…" : "正在读取并复制此标签的目录…";
             log.Write($"Create requested; duplicate={source != null}; mode={requestedMode}; source=0x{source?.Identity.Handle ?? 0:X}");
+            bool attached = false;
             try
             {
                 using (var result = await explorerTabs.CreateAsync(settings.NewTabDirectory, source?.Identity,
@@ -185,6 +196,7 @@ namespace ExplorerTabs.App
                 if (SelectedMode != requestedMode) throw new InvalidOperationException("挂载模式已改变，新建窗口保持独立。");
                 log.Write($"Create Shell ready; elapsedMs={elapsed.ElapsedMilliseconds}");
                 AttachCreatedCore(result, requestedMode, source);
+                attached = true; pendingView.End();
                 log.Write($"Create attach/activate/UI ready; elapsedMs={elapsed.ElapsedMilliseconds}");
                 log.Write($"Create attached HWND=0x{result.Identity.Handle:X}; directory={result.Directory}");
                 }
@@ -202,10 +214,24 @@ namespace ExplorerTabs.App
             finally
             {
                 if (creation == request) { creation = null; creationRequestId = null; }
+                pendingView.End();
                 if (!tabs.IsDisposed) tabs.RemovePendingCreation(requestId);
+                if (!attached) RestoreActiveAfterPending();
                 request.Dispose();
-                if (!closing && !IsDisposed) { SetCreationControls(false); SyncShortcutScope(); }
+                if (!closing && !IsDisposed) { SetCreationControls(false); RefreshTabs(); SyncShortcutScope(); }
             }
+        }
+
+        /// <summary>Restores the Explorer that was hidden behind the waiting surface after a failed/cancelled creation.</summary>
+        private void RestoreActiveAfterPending()
+        {
+            if (!CanPresentExplorer) return;
+            try
+            {
+                controller.SetActiveVisible(true);
+                controller.LayoutActive(CurrentBounds(), true);
+            }
+            catch (Exception error) { log.Write("Could not restore the previous tab after creation stopped", error); }
         }
 
         private void AttachCreated(CreatedExplorer result, HostingMode requestedMode) =>
@@ -245,7 +271,7 @@ namespace ExplorerTabs.App
             // Automatic session saving shares workspaceOperation but is invisible background
             // work; only user-facing operations (and new-tab creation) offer cancellation.
             UpdateCancelAffordance(pending || (workspaceOperation != null && !workspaceOperationSilent));
-            foreach (WelcomePanel welcome in content.Controls) welcome.SetPending(pending || workspaceOperation != null || explorerTabs.IsBusy);
+            foreach (WelcomePanel welcome in content.Controls.OfType<WelcomePanel>()) welcome.SetPending(pending || workspaceOperation != null || explorerTabs.IsBusy);
             mode.Enabled = !pending && workspaceOperation == null && controller.Sessions.Count == 0;
             SyncShortcutScope();
             RefreshSessionOfferControls();
@@ -376,6 +402,8 @@ namespace ExplorerTabs.App
             RunSafely("切换标签失败", () =>
             {
                 var watch = Stopwatch.StartNew();
+                pendingView.End();
+                tabs.SetActivePending(null);
                 controller.Activate(session, CurrentBounds(), visible: CanPresentExplorer);
                 watch.Stop();
                 // This measures host Win32 calls, not Explorer paint completion or user-visible latency.
@@ -490,7 +518,8 @@ namespace ExplorerTabs.App
             {
                 tabs.Render(controller.Sessions, controller.Active, CreateTabMenu,
                     session => directoryCache.TryGetValue(session, out var directory) ? directory : null);
-                foreach (WelcomePanel welcome in content.Controls) welcome.Visible = controller.Sessions.Count == 0;
+                bool pending = creationRequestId != null;
+                foreach (WelcomePanel welcome in content.Controls.OfType<WelcomePanel>()) welcome.Visible = !pending && controller.Sessions.Count == 0;
                 mode.Enabled = controller.Sessions.Count == 0 && creation == null && workspaceOperation == null;
                 UpdateStatus();
                 SyncShortcutScope();
@@ -657,9 +686,23 @@ namespace ExplorerTabs.App
             }
             else
             {
+                if (restoringOnExit && identities.Length > 0) ClearRestoredSessionOnExit();
                 SaveSettingsOnExit();
                 log.Write("All windows detached; host closing.");
             }
+        }
+
+        /// <summary>The restored windows stay open outside the host, so offering the same snapshot next launch
+        /// would only invite duplicate tabs. Failures keep the previous snapshot and are logged.</summary>
+        private void ClearRestoredSessionOnExit()
+        {
+            if (libraryStore == null || library.LastSession == null) return;
+            try
+            {
+                var copy = library.Copy(); copy.LastSession = null; libraryStore.Save(copy); library = copy;
+                log.Write("Restore-and-exit completed; saved session cleared.");
+            }
+            catch (Exception error) { log.Write("Restore-and-exit could not clear the saved session", error); }
         }
 
         /// <summary>X / Alt+F4 / 应用菜单“关闭所有标签并退出”：请求精确关闭所有会话窗口，全部消失后退出。

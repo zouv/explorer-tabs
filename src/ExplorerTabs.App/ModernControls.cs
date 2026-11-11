@@ -185,6 +185,49 @@ namespace ExplorerTabs.App
         }
         public void SetPending(bool pending) { create.Enabled = join.Enabled = !pending; }
     }
+    /// <summary>Waiting surface shown as soon as a new tab is requested, before the Explorer window exists.</summary>
+    internal sealed class PendingCreationPanel : Panel
+    {
+        private readonly Timer timer = new Timer { Interval = 40 };
+        private string title = "正在打开新的 Explorer 窗口…";
+        private string hint = "Explorer 正在准备目录，完成后会自动切换。";
+        private float angle;
+        public PendingCreationPanel()
+        {
+            Dock = DockStyle.Fill; BackColor = HostTheme.Canvas; DoubleBuffered = true;
+            SetStyle(ControlStyles.ResizeRedraw | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+            timer.Tick += (_, __) => { angle = (angle + 24F) % 360F; Invalidate(); };
+            VisibleChanged += (_, __) => { if (Visible) timer.Start(); else timer.Stop(); };
+        }
+        public void Begin(string title, string hint)
+        {
+            this.title = title; this.hint = hint; angle = 0;
+            Visible = true; timer.Start(); Invalidate();
+        }
+        public void End() { timer.Stop(); Visible = false; }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var graphics = e.Graphics; graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float scale = DeviceDpi / 96F;
+            int centerX = Width / 2, centerY = Height / 2;
+            int size = (int)(34 * scale), thickness = Math.Max(2, (int)(3 * scale));
+            var spinner = new Rectangle(centerX - size / 2, centerY - (int)(94 * scale), size, size);
+            using (var track = new Pen(Color.FromArgb(214, 224, 238), thickness)) graphics.DrawEllipse(track, spinner);
+            using (var arc = new Pen(HostTheme.Accent, thickness) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                graphics.DrawArc(arc, spinner, angle, 100F);
+            using (var font = new Font(Font.FontFamily, 13F, FontStyle.Bold))
+                TextRenderer.DrawText(graphics, title, font, new Rectangle(0, centerY - (int)(42 * scale), Width, (int)(30 * scale)),
+                    HostTheme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+            TextRenderer.DrawText(graphics, hint, Font, new Rectangle(0, centerY - (int)(8 * scale), Width, (int)(28 * scale)),
+                Color.FromArgb(108, 122, 143), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) timer.Dispose();
+            base.Dispose(disposing);
+        }
+    }
     internal sealed class HostMenuColors : ProfessionalColorTable
     {
         public override Color ToolStripDropDownBackground => Color.FromArgb(253, 254, 255);

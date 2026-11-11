@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -145,7 +146,8 @@ namespace ExplorerTabs.App
                 var current = Volatile.Read(ref scope);
                 int modifiers = ((leftControl || rightControl) ? 1 : 0) | ((leftShift || rightShift) ? 2 : 0) |
                     ((leftAlt || rightAlt) ? 4 : 0) | ((leftWin || rightWin) ? 8 : 0);
-                var decision = actionPolicy.Handle(key.VirtualKey, down, injected, modifiers, Eligible(current), current.CanCreate,
+                bool eligible = Eligible(current);
+                var decision = actionPolicy.Handle(key.VirtualKey, down, injected, modifiers, eligible, current.CanCreate,
                     current.CanSwitch, current.Active != IntPtr.Zero, current.Bindings);
                 if (decision.Command != HostCommand.None)
                 {
@@ -154,6 +156,11 @@ namespace ExplorerTabs.App
                     else if (decision.Command == HostCommand.NextTab || decision.Command == HostCommand.NextPage) switchTab(1);
                     else if (decision.Command == HostCommand.PreviousTab || decision.Command == HostCommand.PreviousPage) switchTab(-1);
                 }
+                // Reparented Explorer does not always translate Ctrl+A inside its in-place rename
+                // edit; post select-all to the focused edit without consuming the original key.
+                if (decision.Command == HostCommand.None &&
+                    EmbeddedInputPolicy.IsSelectAll(key.VirtualKey, down, injected, modifiers, eligible, current.Active != IntPtr.Zero))
+                    SelectAllInActiveEdit(current);
                 if (decision.Suppress) return new IntPtr(1);
             }
             catch { /* Never allow exceptions to cross the native hook boundary. */ }
@@ -161,6 +168,22 @@ namespace ExplorerTabs.App
         }
 
         private static bool IsDown(int key) => (GetAsyncKeyState(key) & 0x8000) != 0; // Initialise BEFORE hook installation only.
+
+        /// <summary>Posts EM_SETSEL(0, -1) only when focus belongs to the active Explorer's edit control.</summary>
+        private static void SelectAllInActiveEdit(Scope current)
+        {
+            // Query the Explorer thread's own queue: the host is the foreground top-level window,
+            // but the in-place rename edit belongs to the reparented Explorer thread.
+            var gui = new GuiThreadInfo { Size = (uint)Marshal.SizeOf<GuiThreadInfo>() };
+            if (!GetGUIThreadInfo(current.ThreadId, ref gui) || gui.Focus == IntPtr.Zero) return;
+            uint focusThread = GetWindowThreadProcessId(gui.Focus, out uint focusProcess);
+            if (focusThread != current.ThreadId || focusProcess != current.ProcessId) return;
+            if (gui.Focus != current.Active && !IsChild(current.Active, gui.Focus)) return;
+            var className = new StringBuilder(64);
+            if (GetClassName(gui.Focus, className, className.Capacity) == 0) return;
+            if (!EmbeddedInputPolicy.IsEditClass(className.ToString())) return;
+            PostMessage(gui.Focus, 0x00B1, IntPtr.Zero, new IntPtr(-1)); // EM_SETSEL
+        }
 
         public void Dispose()
         {
@@ -215,6 +238,9 @@ namespace ExplorerTabs.App
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+        [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsChild(IntPtr parent, IntPtr child);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+        [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string? name);
     }
 }

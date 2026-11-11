@@ -219,6 +219,9 @@ namespace ExplorerTabs.App
             }
             if (candidates.Length == 0) menu.Items.Add(new ToolStripMenuItem("暂无可加入的 Explorer 窗口") { Enabled = false });
             menu.Items.Add(new ToolStripSeparator());
+            var addAll = menu.Items.Add("加入全部窗口", null, (_, __) => QueueMenuAction(() => AttachSelectedWindows(candidates)));
+            addAll.Enabled = MenuIdle && candidates.Length > 0;
+            addAll.ToolTipText = candidates.Length == 0 ? "当前没有可加入的 Explorer 窗口。" : $"将所有未接管的 Explorer 窗口（{candidates.Length} 个）加入为标签。";
             var choose = menu.Items.Add("选择窗口…", null, (_, __) => QueueMenuAction(OpenWindowPicker));
             choose.Enabled = MenuIdle;
             choose.ToolTipText = "打开窗口选择器，可一次选择多个 Explorer 窗口加入。";

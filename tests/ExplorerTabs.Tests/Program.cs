@@ -481,6 +481,14 @@ namespace ExplorerTabs.Tests
             Check(!decision.Suppress && decision.Direction == 0, "Tab already held at hook startup remains untouched");
             Check(!policy.Handle(9, false, false, true, false, false, true).Suppress, "startup-held Tab key-up remains untouched");
             Check(policy.Handle(9, true, false, true, false, false, true).Direction == 1, "fresh Tab after startup-held release switches normally");
+            Check(EmbeddedInputPolicy.IsSelectAll(0x41, true, false, 1, true, true) &&
+                !EmbeddedInputPolicy.IsSelectAll(0x41, true, false, 5, true, true) &&
+                !EmbeddedInputPolicy.IsSelectAll(0x41, false, false, 1, true, true) &&
+                !EmbeddedInputPolicy.IsSelectAll(0x41, true, true, 1, true, true) &&
+                !EmbeddedInputPolicy.IsSelectAll(0x41, true, false, 1, false, true) &&
+                EmbeddedInputPolicy.IsEditClass("Edit") && EmbeddedInputPolicy.IsEditClass("RichEdit20W") &&
+                !EmbeddedInputPolicy.IsEditClass("DirectUIHWND") && !EmbeddedInputPolicy.IsEditClass(null),
+                "embedded Ctrl+A forwarding is limited to physical Ctrl+A in edit controls");
 
             var api = new FakeWindows();
             var host = new HostController(api, new FakeStore());

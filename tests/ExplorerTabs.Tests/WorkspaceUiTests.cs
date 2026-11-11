@@ -362,11 +362,14 @@ namespace ExplorerTabs.Tests
             }
             var restoreApi = new FakeWindows(); var restoreHost = new HostController(restoreApi, new FakeStore());
             Add(restoreHost, 1); Add(restoreHost, 2);
-            using (var form = WorkspaceForm(restoreHost, new WorkspaceService(), directory, new WorkspaceStore()))
+            var restoreStore = new WorkspaceStore { Value = new WorkspaceLibrary { LastSession = SampleWorkspace() } };
+            using (var form = WorkspaceForm(restoreHost, new WorkspaceService(), directory, restoreStore))
             {
                 UiCall(form, "CloseRestoringWindows"); Application.DoEvents();
                 Check(form.IsDisposed && restoreApi.Events.Contains("restore:1") && restoreApi.Events.Contains("restore:2"),
                     "explicit restore-and-exit path detaches windows instead of closing them");
+                Check(restoreStore.Saves == 1 && restoreStore.Value.LastSession == null,
+                    "restore-and-exit clears the saved session so the next launch does not offer duplicate tabs");
             }
         }
 

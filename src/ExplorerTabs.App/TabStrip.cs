@@ -23,6 +23,7 @@ namespace ExplorerTabs.App
         private int maxRows = 3;
         private Func<WindowSession, string?>? directoryLookup;
         private readonly HashSet<WindowSession> closeReading = new HashSet<WindowSession>();
+        private Guid? activePending;
         private const int MinimumTabWidth = 110, MaximumTabWidth = 280;
         // Native WS_HSCROLL / WS_VSCROLL bars are deliberately disabled: they are tall, follow
         // the system theme and can feed into each other (a transient horizontal bar shrinks the
@@ -84,6 +85,7 @@ namespace ExplorerTabs.App
         {
             var existing = Controls.OfType<TabButton>().Where(b => b.Session != null).ToArray();
             var pendingButtons = Controls.OfType<TabButton>().Where(b => b.Session == null).ToArray();
+            foreach (var pending in pendingButtons) ConfigureButton(pending, pending.PendingRequestId == activePending);
             if (!existing.Select(b => b.Session).SequenceEqual(sessions)) CancelPointer();
             this.directoryLookup = directoryLookup;
             SuspendLayout();
@@ -104,7 +106,7 @@ namespace ExplorerTabs.App
                         button = new TabButton(this, session);
                         Controls.Add(button);
                     }
-                    ConfigureButton(button, active == session);
+                    ConfigureButton(button, activePending == null && active == session);
                     button.Text = (session.State == SessionState.Attached ? "" : "⚠ ") + session.DisplayTitle +
                         (session.CloseRequestedUtc != null || closeReading.Contains(session) ? " · 关闭中…" : "");
                     button.AccessibleName = button.Text;
@@ -137,7 +139,8 @@ namespace ExplorerTabs.App
         public void ShowPendingCreation(Guid requestId, WindowSession? source = null)
         {
             var button = new TabButton(this, null) { PendingRequestId = requestId, PendingSource = source, Text = "正在打开…", Enabled = false };
-            ConfigureButton(button, false); button.AccessibleName = button.Text; button.Width = MeasureTabWidth(button);
+            activePending = requestId;
+            ConfigureButton(button, true); button.AccessibleName = button.Text; button.Width = MeasureTabWidth(button);
             Controls.Add(button);
             var anchor = source == null ? null : Controls.OfType<TabButton>().FirstOrDefault(b => b.Session == source);
             if (anchor != null) Controls.SetChildIndex(button, Controls.GetChildIndex(anchor) + 1);
@@ -147,16 +150,21 @@ namespace ExplorerTabs.App
 
         public void CompletePendingCreation(Guid requestId, WindowSession session)
         {
+            if (activePending == requestId) activePending = null;
             var button = Controls.OfType<TabButton>().FirstOrDefault(b => b.PendingRequestId == requestId);
             if (button != null) button.BindSession(session);
         }
 
         public void RemovePendingCreation(Guid requestId)
         {
+            if (activePending == requestId) activePending = null;
             var button = Controls.OfType<TabButton>().FirstOrDefault(b => b.PendingRequestId == requestId);
             if (button == null) return;
             Controls.Remove(button); button.Dispose(); UpdateRows();
         }
+
+        /// <summary>Lets an explicit tab click take visual priority over a background creation.</summary>
+        public void SetActivePending(Guid? requestId) => activePending = requestId;
 
         public void SetCloseReading(WindowSession session, bool reading)
         { if (reading) closeReading.Add(session); else closeReading.Remove(session); }

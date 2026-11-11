@@ -48,9 +48,14 @@ namespace ExplorerTabs.Tests
                 var pending = TabControls(strip).Single(c => c != oldButton);
                 Check(!pending.Enabled && pending.ContextMenuStrip == null && pending.Text.Contains("正在打开") && host.Sessions.Count == 1 && journal.Snapshots.Count == 1,
                     "new tab immediately has a disabled placeholder with no HWND identity or journal entry");
+                Check(UiField<Control>(form, "pendingView").Visible && api.Visible.Count == 0 &&
+                    (bool)pending.GetType().GetProperty("IsActive")!.GetValue(pending)! &&
+                    !(bool)oldButton.GetType().GetProperty("IsActive")!.GetValue(oldButton)!,
+                    "new tab immediately switches to the waiting surface and marks the placeholder active");
                 UiCall(form, "RefreshTabs"); Check(TabControls(strip).Contains(pending) && TabControls(strip).Contains(oldButton),
                     "monitor/render retains pending placeholder and existing button");
                 service.FinishCreate(); PumpTask(create);
+                Check(!UiField<Control>(form, "pendingView").Visible, "completed creation closes the waiting surface");
                 Check(TabControls(strip).Contains(pending) && pending.Enabled && !oldButton.IsDisposed && host.Sessions.Count == 2 && journal.Snapshots.Count == 2,
                     "successful creation binds the original placeholder, without rebuilding existing tab HWNDs");
                 Check(TabControls(strip).All(c => !c.Text.Contains("正在打开")), "completed creation clears pending presentation");

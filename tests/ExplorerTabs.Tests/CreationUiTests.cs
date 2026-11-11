@@ -61,8 +61,11 @@ namespace ExplorerTabs.Tests
                     using (var menu = (ContextMenuStrip)UiCall(form, "CreateAddWindowsMenu")!)
                     {
                         var items = menu.Items.OfType<ToolStripMenuItem>().Select(i => i.Text).ToArray();
-                        Check(items.SequenceEqual(new[] { "Test 7", "Test 8", "选择窗口…" }),
-                            "attach menu lists discovered windows by title then the window picker entry");
+                        Check(items.SequenceEqual(new[] { "Test 7", "Test 8", "加入全部窗口", "选择窗口…" }),
+                            "attach menu lists discovered windows, then join-all and the window picker");
+                        var addAll = menu.Items.OfType<ToolStripMenuItem>().Single(i => i.Text == "加入全部窗口");
+                        Check(addAll.Enabled && addAll.ToolTipText.Contains("2 个"),
+                            "join-all is enabled with the discovered window count");
                         var windowItem = menu.Items.OfType<ToolStripMenuItem>().First();
                         Check(windowItem.ToolTipText.StartsWith("加入为标签：Test 7") && !windowItem.ToolTipText.Contains("HWND") && !windowItem.ToolTipText.Contains("PID"), "attach window entry explains the click and avoids technical identity details on hover");
                     }
@@ -71,8 +74,9 @@ namespace ExplorerTabs.Tests
                     {
                         var placeholders = menu.Items.OfType<ToolStripMenuItem>().ToArray();
                         Check(!placeholders[0].Enabled && placeholders[0].Text == "暂无可加入的 Explorer 窗口" &&
+                            !placeholders.Single(i => i.Text == "加入全部窗口").Enabled &&
                             placeholders.Last().Text == "选择窗口…",
-                            "attach menu keeps an explicit empty state and join manager entry");
+                            "attach menu keeps an explicit empty state and disables join-all");
                     }
                     var task = (Task)UiCall(form, "CreateTabAsync", new object?[] { null })!; PumpTask(task);
                     Check(host.Sessions.Count == 1 && host.Active!.Identity.Handle == 1 && service.Calls == 1 && service.Source == null,
