@@ -1,10 +1,10 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-11-13；发布 0.13.0 中。本轮 7 项体验修复已完成自动验证与打包，等待用户实机复验；不自动启动真实交互宿主或操作用户 Explorer。
+状态日期：2026-11-13；无进行中任务。当前正式版本 0.13.0，本轮 7 项体验修复已完成自动验证与发布，等待用户实机复验；不自动启动真实交互宿主或操作用户 Explorer。
 
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin https://github.com/zouv/explorer-tabs；正式入口 `dist/release/unpack/ExplorerTabs.exe`（0.13.0）；当前正式版本 0.13.0，Release 待推送；上一正式版 v0.12.0（`d0468ec`）历史保留。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin https://github.com/zouv/explorer-tabs；正式入口 `dist/release/unpack/ExplorerTabs.exe`（0.13.0）；Release https://github.com/zouv/explorer-tabs/releases/tag/v0.13.0（标签 `v0.13.0` 指向 fe74c7b，上一正式版 v0.12.0 历史保留）。
 
-最后验证：2026-11-13 完整 `build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1138 项安全断言（核心 536、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 416、隔离打包 25），零警告 / 零错误，日志 `.runtime/verification-v0.13.0.txt`；正式包原始二进制在隔离目录复跑 1113 项可执行检查通过，日志 `.runtime/verification-packaged-v0.13.0.txt`；dev / release zip 与 `SHA256SUMS.txt` 已生成。未启动真实交互宿主，真实 Shell 键鼠行为与弹窗体验待用户复验。
+最后验证：2026-11-13 完整 `build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1138 项安全断言（核心 536、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 416、隔离打包 25），零警告 / 零错误，日志 `.runtime/verification-v0.13.0.txt`；正式包原始二进制在隔离目录复跑 1113 项可执行检查通过，日志 `.runtime/verification-packaged-v0.13.0.txt`；dev / release zip 与 `SHA256SUMS.txt` 已发布，三个附件的远端 digest 与下载后 SHA-256 均匹配。未启动真实交互宿主，真实 Shell 键鼠行为与弹窗体验待用户复验。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
 - 2026-11-13 本轮 7 项：① 标签右键菜单出现“在右侧新建”，应在该标签右侧打开设置默认目录的新标签且不复制目录；② 关闭活动标签应立即切到左邻（无左邻切右邻），不再等待 Explorer 关闭确认；③ “关闭标签”为普通文字色；④ 菜单备注（快捷键、“追加”等）在右侧列对齐；⑤ 收藏菜单标签组项显示“追加「名称（N标签）」”并直接追加，保存标签组默认名为“我的标签组”；⑥ 应用内弹窗打开且切到后台时，按全局快捷键应把主窗口和弹窗带回前台；⑦ 工具栏空白 / 分隔线按住可拖动窗口，标签栏被占满时也能拖动。

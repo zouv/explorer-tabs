@@ -55,7 +55,7 @@
 - 默认测试的 mutex 探针仅启动测试 runner，自建 Guid 用户身份、CreateNoWindow，不读取实际用户的状态或窗口。历史 dist / 验证记录与用户清单原样保留，发布只复制新构建的明确文件名单。
 
 ### 3.7 打包与出包目录
-- 当前正式版本 0.12.0（2026-11-11），`v0.12.0` 标签固定指向代码提交 `d0468ec`；正式双 zip + SHA256SUMS 已发布并经远端 digest / 下载核验，详见 CHANGELOG 0.12.0。构建阶段 1134 项安全检查通过；正式包原始二进制另在独立 runner 复跑 1109 项可执行检查通过（`.runtime/verification-packaged-v0.12.0.txt`）。发布结果文档另提交，不移动标签或因文档收尾重打已发布包。
+- 当前正式版本 0.13.0（2026-11-13），`v0.13.0` 标签固定指向代码提交 `fe74c7b`；正式双 zip + SHA256SUMS 已发布并经远端 digest / 下载核验，详见 CHANGELOG 0.13.0。构建阶段 1138 项安全检查通过；正式包原始二进制另在独立 runner 复跑 1113 项可执行检查通过（`.runtime/verification-packaged-v0.13.0.txt`）。发布结果文档另提交，不移动标签或因文档收尾重打已发布包。
 - `package.bat` → `scripts/package.ps1`；版本只从 `Directory.Build.props` 的 `<Version>` 读取，不在脚本里写死。
 - 根目录 `build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `dev.bat` / `ci.bat` 只做参数透传与前置检查，构建 / 测试逻辑仍集中在 `scripts/build.ps1`；`verify.bat` 用 `-TreatWarningsAsErrors` 传入警告即错误并追加 `check-docs.sh`，`clean.bat` 不 taskkill，`run.bat` 仅由用户显式启动；`dev.bat` 先构建、再运行 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`，并把 `-CloseRunningHost` 传给 build.ps1：检测到已有 ExplorerTabs 时列出 PID / 路径并询问，输入 Y 才先正常关闭、12 秒超时后强制结束，然后继续构建 / 启动，其它输入以退出码 2 取消；非交互输入直接拒绝。
 - 每次先构建到唯一 `.runtime/staging/package-<Guid>`；公共 `package.lock` 用独占文件句柄保护构建 / 发布且不 unlink。EXE / Core 程序集版本一致，两个 zip 的条目数 / 长度 / SHA256 均验证后，才将旧 dev / release 移入本次备份并逐个发布；任一步失败逆序回滚，回滚失败保留 stage 明示路径。成功仅清本次已校验 stage；历史 `dist/vX-release` 与其它暂存目录不动。
