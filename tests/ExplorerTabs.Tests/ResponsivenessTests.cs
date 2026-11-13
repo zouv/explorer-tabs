@@ -180,6 +180,8 @@ namespace ExplorerTabs.Tests
                 UiCall(form, "RefreshTabs"); var strip = UiField<FlowLayoutPanel>(form, "tabs"); var before = TabControls(strip);
                 UiField<Dictionary<WindowSession, string>>(form, "directoryCache")[target] = @"C:\Stale";
                 var watch = Stopwatch.StartNew(); var close = WorkspaceTask(form, "CloseTabAsync", target);
+                Check(host.Active == first && service.HoldRead,
+                    "active close switches to the left neighbour before the directory read completes");
                 Check(TabControls(strip).Any(c => c.Text.Contains("关闭中")) && closer.Calls.Count == 0,
                     "close gives immediate closing feedback before asynchronous directory read");
                 PumpTask(close);

@@ -38,7 +38,7 @@ namespace ExplorerTabs.Tests
                         "empty detach menu contains no destructive close and disables unavailable detach actions");
                 using (var menu = MakeMenu(form, "CreateSessionMenu"))
                     Check(!MenuItem(menu, "保存当前会话").Enabled && !MenuItem(menu, "重新打开关闭的标签").Enabled &&
-                        MenuItem(menu, "恢复上次会话（追加）").Enabled && MenuItem(menu, "清除上次会话记录").Enabled,
+                        MenuItem(menu, "恢复上次会话").Enabled && MenuItem(menu, "清除上次会话记录").Enabled,
                         "empty host offers explicit restore/clear but no empty save or unavailable reopen");
                 var one = Add(host, 1); var two = Add(host, 2); host.Activate(one, Bounds); UiCall(form, "RefreshTabs");
                 using (var modal = (IDisposable)UiCall(form, "EnterModal")!)
@@ -49,10 +49,10 @@ namespace ExplorerTabs.Tests
                 {
                     Check(menu.ShowItemToolTips && menu.Items.OfType<ToolStripLabel>().Select(i => i.Text).SequenceEqual(
                         new[] { "收藏（1）", "标签组（1）" }), "library lists use distinct counted section headings");
-                    Check(MenuItem(menu, "资料 && 开发").DropDownItems.Count == 0 && MenuItem(menu, "项目 && 工具（2 个标签）").DropDownItems.Count == 0,
+                    Check(MenuItem(menu, "资料 && 开发").DropDownItems.Count == 0 && MenuItem(menu, "追加「项目 && 工具（2标签）」").DropDownItems.Count == 0,
                         "favorites and groups open directly and escape mnemonic ampersands");
                     Check(MenuItem(menu, "资料 && 开发").ToolTipText.Contains("资料 & 开发") &&
-                        MenuItem(menu, "项目 && 工具（2 个标签）").ToolTipText.Contains("追加"), "hover preserves full user names and append semantics");
+                        MenuItem(menu, "追加「项目 && 工具（2标签）」").ToolTipText.Contains("追加"), "hover preserves full user names and append semantics");
                     Check(menu.Items.OfType<ToolStripMenuItem>().All(i => !i.Text.Contains("重命名") && !i.Text.Contains("删除") && !i.Text.Contains("移除")),
                         "destructive library edits are centralized in manager instead of nested open menus");
                 }
@@ -66,11 +66,30 @@ namespace ExplorerTabs.Tests
                 using (var menu = MakeMenu(form, "CreateLibraryMenu"))
                 {
                     UiField<WorkspaceLibrary>(form, "library").Groups[0].Tabs[0].Directory = @"D:\Changed";
-                    int before = host.Sessions.Count; MenuItem(menu, "项目 && 工具（2 个标签）").PerformClick();
+                    int before = host.Sessions.Count; MenuItem(menu, "追加「项目 && 工具（2标签）」").PerformClick();
                     Check(PumpUntil(() => host.Sessions.Count == before + 2 && UiField<CancellationTokenSource?>(form, "workspaceOperation") == null, 2000) &&
                         service.CreatedPaths.Skip(1).SequenceEqual(new[] { @"C:\One", @"C:\Two" }) && host.Sessions.Any(s => s.CustomTitle == "第一"),
                         "one-click group appends all captured directories in order and preserves aliases");
                 }
+                using (var menu = (ContextMenuStrip)UiCall(form, "CreateTabMenu", two)!)
+                {
+                    var createRight = MenuItem(menu, "在右侧新建");
+                    Check(createRight.Enabled && createRight.ToolTipText.Contains("默认目录"),
+                        "tab menu offers a new tab on the right using the configured default directory");
+                    service.Paths[two.Identity.Handle] = @"D:\Anchor";
+                    service.NextHandle = 13; api.Alive.Add(13);
+                    // Replicate a real dropdown: Opening owns a modal scope, and the queued
+                    // command must release it before the creation guard sees modalDepth == 0.
+                    UiAnyCall(menu, "OnOpening", new System.ComponentModel.CancelEventArgs());
+                    createRight.PerformClick();
+                    UiAnyCall(menu, "OnClosed", new ToolStripDropDownClosedEventArgs(ToolStripDropDownCloseReason.ItemClicked));
+                }
+                Check(PumpUntil(() => host.Sessions.Count == 6 && UiField<CancellationTokenSource?>(form, "creation") == null, 2000) &&
+                    service.CreatedPaths.Last() == new AppSettings().NewTabDirectory &&
+                    host.Sessions.Select(s => s.Identity.Handle).SequenceEqual(new long[] { 1, 2, 13, 10, 11, 12 }),
+                    "new tab on the right inserts after its anchor without copying the anchor directory; sessions=" +
+                    host.Sessions.Count + " paths=" + string.Join(",", service.CreatedPaths) +
+                    " handles=" + string.Join(",", host.Sessions.Select(s => s.Identity.Handle)));
                 host.Activate(one, Bounds);
                 MainType.GetMethod("ConfigureLibrary")!.Invoke(form, new object?[] { null, store.Value });
                 using (var menu = MakeMenu(form, "CreateLibraryMenu"))
@@ -79,12 +98,12 @@ namespace ExplorerTabs.Tests
                     Check(!MenuItem(menu, "收藏当前目录…").Enabled && !MenuItem(menu, "收藏其他目录…").Enabled &&
                         !MenuItem(menu, "保存当前标签组…").Enabled && !MenuItem(menu, "管理收藏与标签组…").Enabled &&
                         !MenuItem(tab, "收藏此目录…").Enabled, "unwritable library disables all persistent edits, including tab context menu");
-                    Check(MenuItem(menu, "资料 && 开发").Enabled && MenuItem(menu, "项目 && 工具（2 个标签）").Enabled &&
+                    Check(MenuItem(menu, "资料 && 开发").Enabled && MenuItem(menu, "追加「项目 && 工具（2标签）」").Enabled &&
                         menu.Items.OfType<ToolStripLabel>().Any(i => i.Text.Contains("不可写")), "unwritable library keeps existing records readable/openable and explains restriction");
                 }
                 using (var menu = MakeMenu(form, "CreateSessionMenu"))
                     Check(!MenuItem(menu, "保存当前会话").Enabled && !MenuItem(menu, "清除上次会话记录").Enabled &&
-                        MenuItem(menu, "恢复上次会话（追加）").Enabled, "unwritable library allows restore but never save or clear");
+                        MenuItem(menu, "恢复上次会话").Enabled, "unwritable library allows restore but never save or clear");
                 Check(CommandEntries(form).Any(e => EntryText(e, "Title").StartsWith("打开收藏目录")) &&
                     !CommandEntries(form).Any(e => EntryText(e, "Title") == "管理收藏与标签组…" || EntryText(e, "Title") == "保存当前会话"),
                     "command palette follows library read-only state and shared terminology");
@@ -95,7 +114,10 @@ namespace ExplorerTabs.Tests
                 using (var menu = MakeMenu(form, "CreateSessionMenu"))
                     Check(MenuItem(menu, "保存当前会话").ShortcutKeyDisplayString == "Ctrl+Alt+S" &&
                         MenuItem(menu, "重新打开关闭的标签").ShortcutKeyDisplayString == "Ctrl+Alt+R" &&
-                        MenuItem(menu, "清除上次会话记录").ToolTipText.Contains("后续标签变化"), "session shortcuts show actual bindings and clear explains automatic re-save");
+                        MenuItem(menu, "恢复上次会话").ShortcutKeyDisplayString == "追加" &&
+                        !MenuItem(menu, "恢复上次会话").Text.Contains("追加") &&
+                        MenuItem(menu, "清除上次会话记录").ToolTipText.Contains("后续标签变化"),
+                        "session notes and actual shortcut bindings use the right-aligned menu column");
                 Check(CommandEntries(form).Any(e => EntryText(e, "Title") == "保存当前会话" && EntryText(e, "Detail") == "Ctrl+Alt+S"),
                     "command palette uses actual custom shortcut instead of hardcoded default");
                 settings.ShortcutsEnabled = false;
@@ -171,8 +193,8 @@ namespace ExplorerTabs.Tests
                 using (var menu = MakeMenu(form, "CreateLibraryMenu"))
                 using (var session = MakeMenu(form, "CreateSessionMenu"))
                 using (var tab = (ContextMenuStrip)UiCall(form, "CreateTabMenu", one)!)
-                    Check(!MenuItem(menu, "资料 && 开发").Enabled && !MenuItem(menu, "项目 && 工具（2 个标签）").Enabled &&
-                        !MenuItem(session, "恢复上次会话（追加）").Enabled && !MenuItem(session, "重新打开关闭的标签").Enabled &&
+                    Check(!MenuItem(menu, "资料 && 开发").Enabled && !MenuItem(menu, "追加「项目 && 工具（2标签）」").Enabled &&
+                        !MenuItem(session, "恢复上次会话").Enabled && !MenuItem(session, "重新打开关闭的标签").Enabled &&
                         !MenuItem(tab, "复制标签").Enabled, "100-tab capacity disables opens/reopen/duplicate before an error or no-op");
             }
             host.DetachAll();
@@ -184,7 +206,7 @@ namespace ExplorerTabs.Tests
                 using (var menu = MakeMenu(form, "CreateSessionMenu"))
                 {
                     UiField<WorkspaceLibrary>(form, "library").LastSession!.Tabs[0].Directory = @"D:\Changed";
-                    MenuItem(menu, "恢复上次会话（追加）").PerformClick();
+                    MenuItem(menu, "恢复上次会话").PerformClick();
                     Check(PumpUntil(() => restoreHost.Sessions.Count == 2 && UiField<CancellationTokenSource?>(form, "workspaceOperation") == null, 2000) &&
                         restoreService.CreatedPaths.SequenceEqual(new[] { @"C:\One", @"C:\Two" }), "session restore stays anchored to captured snapshot instead of changed live record");
                 }
@@ -212,7 +234,7 @@ namespace ExplorerTabs.Tests
                     Check(IsValidMenuUnicode(candidate.Text), "title shortening does not split surrogate pairs");
                 }
                 using (var menu = MakeMenu(form, "CreateSessionMenu"))
-                    Check(!MenuItem(menu, "恢复上次会话（追加）").Enabled && !MenuItem(menu, "清除上次会话记录").Enabled,
+                    Check(!MenuItem(menu, "恢复上次会话").Enabled && !MenuItem(menu, "清除上次会话记录").Enabled,
                         "missing snapshot disables both restore and clear");
                 Check(HostShortcutCatalog.Name(HostCommand.CloseTab) == "关闭标签" && HostShortcutCatalog.Name(HostCommand.ReopenTab) == "重新打开关闭的标签",
                     "shortcut settings use the same close/reopen names as menus");

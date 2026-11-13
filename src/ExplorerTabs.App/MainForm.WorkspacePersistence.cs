@@ -79,7 +79,7 @@ namespace ExplorerTabs.App
         private async Task SaveGroupAsync()
         {
             if (!CanCaptureWorkspace) return;
-            string? name = AskName("保存当前标签组", "我的工作空间"); if (name == null) return;
+            string? name = AskName("保存当前标签组", "我的标签组"); if (name == null) return;
             var operation = new CancellationTokenSource(30000); workspaceOperation = operation; SetCreationControls(false);
             try
             {

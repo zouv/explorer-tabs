@@ -66,7 +66,7 @@ namespace ExplorerTabs.App
                 if (e.Clicks == 2) { ToggleMaximize(); return; }
                 ReleaseCapture(); SendMessage(Handle, 0xA1, new IntPtr(2), IntPtr.Zero);
             }
-            else if (e.Button == MouseButtons.Right) ShowAppMenu(tabs.PointToScreen(e.Location));
+            else if (e.Button == MouseButtons.Right) ShowAppMenu(((Control)sender!).PointToScreen(e.Location));
         }
         private ContextMenuStrip CreateAppMenu()
         {
@@ -96,8 +96,9 @@ namespace ExplorerTabs.App
         {
             if (m.Msg == 0x0312 && m.WParam.ToInt64() == GlobalHotkeyRegistration.HotkeyId)
             {
-                // Never toggle while a modal dialog (including hotkey capture) or exit flow is active.
-                if (!closing && !exitPreparing && modalDepth == 0) QueueMenuAction(ToggleHostVisibility);
+                // A modal dialog may be open; ToggleHostVisibility still allows bringing the
+                // host forward from the background while refusing to minimize/hide it.
+                if (!closing && !exitPreparing) QueueMenuAction(ToggleHostVisibility);
                 return;
             }
             if (m.Msg == 0x0211 && nativeMenuScope == null && !disposingUi) nativeMenuScope = EnterModal();

@@ -112,6 +112,14 @@ namespace ExplorerTabs.Tests
                     "maximized host minimizes without losing restore size or maximized exit state");
                 UiCall(form, "RestoreHostWindowState");
                 Check(form.WindowState == FormWindowState.Maximized, "hotkey restore retains maximized state without foreground activation");
+                // An in-app modal dialog must not swallow the hotkey's show path: the host and
+                // its owned dialog can still be brought back from the background.
+                UiCall(form, "MinimizeHostForHotkey");
+                MainType.GetField("modalDepth", PrivateInstance)!.SetValue(form, 1);
+                UiCall(form, "ToggleHostVisibility");
+                Check(form.WindowState == FormWindowState.Maximized,
+                    "global hotkey restores a minimized host while an in-app modal dialog is open");
+                MainType.GetField("modalDepth", PrivateInstance)!.SetValue(form, 0);
             }
         }
         private static void SettingsTrayPreferenceUiTests()

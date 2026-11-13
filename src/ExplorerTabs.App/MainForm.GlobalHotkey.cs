@@ -27,9 +27,15 @@ namespace ExplorerTabs.App
         }
         internal void ToggleHostVisibility()
         {
-            if (closing || exitPreparing || IsDisposed || modalDepth > 0) return;
-            switch (GlobalHotkeyPolicy.Decide(Visible, WindowState == FormWindowState.Minimized,
-                TabKeyboardHook.IsTargetForeground(Handle, controller.Active), settings.HideToTrayOnGlobalHotkey))
+            if (closing || exitPreparing || IsDisposed) return;
+            var action = GlobalHotkeyPolicy.Decide(Visible, WindowState == FormWindowState.Minimized,
+                TabKeyboardHook.IsTargetForeground(Handle, controller.Active), settings.HideToTrayOnGlobalHotkey);
+            // A modal app dialog must stay visible. Minimizing the host hides its owned
+            // dialog and makes WinForms end ShowDialog early (DialogResult.Cancel); hiding
+            // only the host leaves the dialog orphaned. So while modal, the hotkey only
+            // brings the host and its dialog forward.
+            if (modalDepth > 0 && action != GlobalHotkeyAction.ShowHost) return;
+            switch (action)
             {
                 case GlobalHotkeyAction.HideToTray: HideHostForHotkey(); break;
                 case GlobalHotkeyAction.MinimizeHost: MinimizeHostForHotkey(); break;
@@ -60,6 +66,15 @@ namespace ExplorerTabs.App
             if (!Visible) Show();
             RestoreHostWindowState();
             Activate();
+            // ShowDialog owns the dialog as a separate top-level window. Activating only the
+            // host leaves the dialog behind other applications, so promote it explicitly.
+            // Do not call Show() here: ShowDialog sets Form.Modal and Form.Show() rejects it.
+            foreach (Form owned in OwnedForms)
+            {
+                if (owned.IsDisposed || owned.WindowState == FormWindowState.Minimized) continue;
+                owned.Activate();
+                break;
+            }
             try { if (CanPresentExplorer) { controller.SetActiveVisible(true); controller.LayoutActive(CurrentBounds(), true); } }
             catch (Exception error) { log.Write("Restore active window from hotkey failed", error); }
             SyncShortcutScope();

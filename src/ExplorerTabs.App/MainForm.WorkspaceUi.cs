@@ -57,10 +57,16 @@ namespace ExplorerTabs.App
             windows.Click += (_, __) => ShowManagedMenu(CreateDetachMenu(), windows);
             toolbar.Paint += PaintToolbarDivider;
             toolbarRight.Paint += PaintToolbarDivider;
+            // Blank toolbar space (and the divider) also drags the window, so a full tab row
+            // does not leave the user hunting for a bare patch of the tab strip.
+            toolbar.MouseDown += ChromeMouseDown;
+            toolbarRight.MouseDown += ChromeMouseDown;
             if (toolbar.Parent != null) toolbar.Parent.Paint += PaintToolbarDivider;
             toolbar.Controls.Clear();
             toolbarRight.Controls.Clear();
-            toolbar.Controls.AddRange(new Control[] { addWindows, windows, new ToolbarDivider(), favorites, session, cancelCreation });
+            var divider = new ToolbarDivider();
+            divider.MouseDown += ChromeMouseDown;
+            toolbar.Controls.AddRange(new Control[] { addWindows, windows, divider, favorites, session, cancelCreation });
             // Search opens a dialog; keep it visually separate on the right.
             toolbarRight.Controls.AddRange(new Control[] { search });
             newTab.Tag = HostCommand.NewTab; search.Tag = HostCommand.SearchTabs;
@@ -160,12 +166,13 @@ namespace ExplorerTabs.App
         }
         private string ShortcutChord(HostCommand command) =>
             settings.ShortcutsEnabled ? settings.KeyBindings.FirstOrDefault(k => k.Command == command)?.Chord ?? "" : "";
-        private static void ShowShortcut(ToolStripItem item, string chord)
+        private static void ShowShortcut(ToolStripItem item, string chord) => ShowNote(item, chord);
+        // Notes (shortcuts, append markers, counts) share WinForms' right-aligned shortcut
+        // column so they never push the action label around.
+        private static void ShowNote(ToolStripItem item, string note)
         {
-            // ShortcutKeyDisplayString is painted by WinForms in the menu's right-aligned
-            // shortcut column; never append the chord to the item text itself.
-            if (!string.IsNullOrEmpty(chord) && item is ToolStripMenuItem menuItem)
-            { menuItem.ShowShortcutKeys = true; menuItem.ShortcutKeyDisplayString = chord; }
+            if (!string.IsNullOrEmpty(note) && item is ToolStripMenuItem menuItem)
+            { menuItem.ShowShortcutKeys = true; menuItem.ShortcutKeyDisplayString = note; }
         }
         private void ShowSessionOffer()
         {
@@ -333,9 +340,10 @@ namespace ExplorerTabs.App
             save.ToolTipText = "更新用于下次恢复的会话快照，覆盖此前快照；长期保存请使用标签组。";
             ShowShortcut(save, ShortcutChord(HostCommand.SaveSession));
             var snapshot = library.LastSession?.Copy();
-            var restore = menu.Items.Add("恢复上次会话（追加）", null, (_, __) => { if (snapshot != null) QueueUi(() => OpenWorkspaceAsync(snapshot)); });
+            var restore = menu.Items.Add("恢复上次会话", null, (_, __) => { if (snapshot != null) QueueUi(() => OpenWorkspaceAsync(snapshot)); });
             restore.Enabled = snapshot != null && CanOpenWorkspace(snapshot);
             restore.ToolTipText = "将保存的会话快照追加为新标签，不替换当前标签。";
+            ShowNote(restore, "追加");
             var reopen = menu.Items.Add("重新打开关闭的标签", null, (_, __) => QueueUi(ReopenTabAsync));
             reopen.Enabled = MenuIdle && closedTabs.Count > 0 && controller.Sessions.Count < 100;
             reopen.ToolTipText = "按关闭顺序逐个恢复最近的标签目录与名称；最多保留 20 项可恢复记录。";
@@ -389,7 +397,7 @@ namespace ExplorerTabs.App
             foreach (var record in library.Groups)
             {
                 var group = record.Copy();
-                var item = new ToolStripMenuItem(MenuText(group.Name) + "（" + group.Tabs.Count + " 个标签）")
+                var item = new ToolStripMenuItem("追加「" + MenuText(group.Name) + "（" + group.Tabs.Count + "标签）」")
                 {
                     ToolTipText = "追加打开标签组：" + group.Name + "\n将 " + group.Tabs.Count + " 个保存的目录追加为新标签，不替换当前标签。",
                     Enabled = CanOpenWorkspace(group)

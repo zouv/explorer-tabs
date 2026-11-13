@@ -1,45 +1,34 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-11-11；无进行中任务。0.12.0 已发布；四项体验修复待用户实机复验，真实 Shell、实际系统重启与交互体验不自动操作。
-源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin 关联 https://github.com/zouv/explorer-tabs；当前正式版本 0.12.0，Release https://github.com/zouv/explorer-tabs/releases/tag/v0.12.0；历史 Release 保留。
-最后验证：2026-11-11 完整 `build.ps1 -TreatWarningsAsErrors -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1134 项安全断言（核心 536、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 412、隔离打包 25），零警告 / 零错误（`.runtime/verification-v0.12.0.txt`）；正式包原始二进制在隔离目录复跑 1109 项可执行检查通过（`.runtime/verification-packaged-v0.12.0.txt`），三个附件远端 digest 与下载后 SHA-256 匹配。未启动真实交互宿主、未操作用户 Explorer；本轮四项修复与真实 Shell 键鼠交互待用户复验。
+状态日期：2026-11-13；发布 0.13.0 中。本轮 7 项体验修复已完成自动验证与打包，等待用户实机复验；不自动启动真实交互宿主或操作用户 Explorer。
 
-正式入口 `dist/release/unpack/ExplorerTabs.exe`（0.12.0）；Release / Debug zip 与 `dist/release/SHA256SUMS.txt` 均已发布。标签 `v0.12.0` 固定指向代码提交 `d0468ec`，发布结果文档另提交，不移动标签或因文档收尾重打包。完整发布记录见 CHANGELOG 0.12.0 / ROADMAP P47。
+源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin https://github.com/zouv/explorer-tabs；正式入口 `dist/release/unpack/ExplorerTabs.exe`（0.13.0）；当前正式版本 0.13.0，Release 待推送；上一正式版 v0.12.0（`d0468ec`）历史保留。
+
+最后验证：2026-11-13 完整 `build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1138 项安全断言（核心 536、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 416、隔离打包 25），零警告 / 零错误，日志 `.runtime/verification-v0.13.0.txt`；正式包原始二进制在隔离目录复跑 1113 项可执行检查通过，日志 `.runtime/verification-packaged-v0.13.0.txt`；dev / release zip 与 `SHA256SUMS.txt` 已生成。未启动真实交互宿主，真实 Shell 键鼠行为与弹窗体验待用户复验。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
-- 2026-11-11 0.12.0 四项修复待实机复验（正式入口已更新；旧版本首次升级可先清除一次旧会话快照）：① “退出并保留窗口”后重开不应再出现“上次会话已保存 N 个目录”横条；② “加入窗口”菜单应看到“加入全部窗口”，点击后加入当前全部未接管 Explorer；③ 点 `+` / Ctrl+T 应立即切到带转圈等待页并高亮占位标签，成功切到新窗口，失败 / 取消恢复原标签；④ 托管 Explorer 内 F2 重命名按 Ctrl+A 应全选文件名（含扩展名）。真实 Shell 键鼠行为未自动操作。
-- 2026-11-07 本轮验证入口为正式 0.11.1 `dist/release/unpack/ExplorerTabs.exe`。先正常退出旧宿主，再手动启动：右键复制中间 / 非活动标签应在该标签右侧占位并完成；系统重启后旧窗口全失效应进入主界面提示手动重开保存目录，无快照不承诺重开。真实 Shell / 实际系统重启尚未操作，完整说明见 CHANGELOG 0.11.1 / ROADMAP P44–P45。
-- 2026-11-01 正式 0.11.0 包包含前三轮改动。正常退出旧宿主后手动运行正式入口；确认应用 / 托盘退出两项的窗口保留结果、收藏 / 组直接打开与管理入口、会话追加恢复、只读 / 忙碌禁用，以及长名称在高 DPI 下的显示；离屏检查不等于真实弹出与键鼠验收。
+- 2026-11-13 本轮 7 项：① 标签右键菜单出现“在右侧新建”，应在该标签右侧打开设置默认目录的新标签且不复制目录；② 关闭活动标签应立即切到左邻（无左邻切右邻），不再等待 Explorer 关闭确认；③ “关闭标签”为普通文字色；④ 菜单备注（快捷键、“追加”等）在右侧列对齐；⑤ 收藏菜单标签组项显示“追加「名称（N标签）」”并直接追加，保存标签组默认名为“我的标签组”；⑥ 应用内弹窗打开且切到后台时，按全局快捷键应把主窗口和弹窗带回前台；⑦ 工具栏空白 / 分隔线按住可拖动窗口，标签栏被占满时也能拖动。
+- 2026-11-11 0.12.0 四项仍待实机复验：退出并保留窗口后重开不再提示旧会话；“加入全部窗口”；`+` / Ctrl+T 等待页与失败恢复；托管 Explorer 内 F2 重命名 Ctrl+A 全选。
+- 更早版本的菜单 / 弹窗 / DPI / 托盘 / 打包确认等观感项若仍有问题，直接在对话反馈，不新增人工回归文档。
 
-- 2026-11-01 热键 / 尺寸：默认切后台应最小化并保留任务栏，勾选托盘选项后才隐藏；其他程序前台时按键应呼出，最大化切后台 / 呼出应仍最大化，设置捕获期间不切换窗口。用 X / Alt+F4 / 退出并保留窗口分别在普通 / 最大化 / 最小化 / 托盘状态关闭后重开，确认尺寸不变；真实注册 / 前台 / 托盘尚未自动操作。
-- 2026-11-01 本轮请先正常退出旧宿主，再手动运行正式 0.11.0 包（见上方入口）。新建 / 复制应立即出占位、成功后原位变真实标签；失败 / 取消应清占位且旧标签可用；Explorer 自身准备仍可能耗时。
-- 2026-11-01 关闭请比较点击反馈与移除延迟，确认活动标签请求后切左邻 / 右邻；若 Explorer 有阻挡对话框，6 秒后仍保留标签、可再次关闭或分离。不应强制杀进程；慢目录读取超时不提供可能错误的重开路径。150ms / 75ms 不代表实机总耗时保证。
-- 2026-11-01 隐藏 / 最小化与菜单打开期间完成新建、外部关闭活动标签，不应复活 Explorer；呼出后活动内容应正常。多标签慢目录保存失败 / 退出 30 秒超时应保留旧库；菜单反复打开、改名 / 排序后动作应仍对应正确标签。
-- 2026-10-29 dev.bat 运行中宿主确认待手动复验：先启动一次 ExplorerTabs，再运行 `dev.bat`。应列出 PID / 路径并询问；输入 N 或直接回车应取消、不关闭进程，输入 Y 应先尝试正常关闭（12 秒超时强制结束）后继续构建并启动。重定向 / 非交互输入会直接拒绝。
-- 2026-10-29 弹窗 chrome 待真机复验：退出旧实例后运行 `dev.bat` 或 `.runtime/build/ExplorerTabs-verify/ExplorerTabs.exe`。所有自建弹窗的四条直边应为完全一致的 1px 灰蓝边框，无描边发虚、无右下投影；圆角是 1px 像素台阶（已确认的取舍）。请重点看左上 / 右下圆角是否连续、四边是否同粗细。
-- 2026-10-29 设置面板 / 目录预设待复验：左导航三页（常规 / 标签栏 / 快捷键）对齐与控件风格；点击“我的电脑 / 用户目录 / 文档 / 下载 / 自定义…”应更新路径并在保存后用于新建标签。请分别在 100% / 125% / 150% DPI 下检查对齐和截断。
-- 2026-10-29 此电脑待真机验证：在设置中选择“我的电脑”并新建标签，应打开“此电脑”；随后保存会话、重启恢复、收藏此目录并打开，均应保持虚拟位置。若失败请提供 host.log（关注 `Creation source directory provider=IPersistFolder2/ThisPC` 及创建匹配失败信息）。
-- 全局快捷键旧版 0.10.0 的无条件隐藏行为已被当前未发布的默认最小化 / 可选托盘方案替代（见本轮验收项）；仍请复验组合键冲突的内联提示与分组模式。
-- 2026-10-29 Wrap Tabs / 滚动条 / `+` 待真机复验：先退出旧宿主再运行 `dev.bat`。开启 Wrap 后标签栏不应再同时出现横 / 纵原生滚动条；单行溢出时只在标签栏底部显示 4px 细条，多行超过行数上限时只在右侧显示，可悬停、拖动、滚轮滚动；标签行将满时 `+` 应紧贴最后一个标签（最后一个标签可能略微收窄或与其一起换行），不再独自占一行。请确认观感与滚动手感。
-- 2026-10-28 窗口 / 标签栏体验待复验：退出旧宿主后运行 `dev.bat`（构建并启动 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`）。顶部视觉空白已缩至 3px，标签栏 / 标签顶部 4px 仍可缩放（顶部总命中约 7px），侧边 / 底部 / 四角不变；标签栏空白双击切换最大化 / 还原；无标签时调整窗口大小，欢迎页图标 / 标题 / 按钮应重新居中。请分别确认观感、顶部缩放手感与双击行为。检查时启动的探针实例已正常关闭，探针改动的 settings 窗口状态已恢复为 Bounds (0,0,800,607)、Maximized=false。
-- 窗口尺寸记忆本轮已覆盖首次 DPI 缩放与最小化退出边界，新增真实退出准备 / 重开和最大化隐藏回归；强制结束进程不保证保存（仅正常退出落盘），显示器 / DPI 变化时仍受工作区与最小尺寸限制。
-- 2026-10-28 打包确认流程待复验：`package.bat` 在检测到 ExplorerTabs 运行时列出 PID / 路径并询问；输入 Y 才先尝试正常关闭（12 秒超时强制结束）并继续打包，其它输入取消；非交互输入直接拒绝。请在实际运行宿主时试一次 Y / 非 Y 两条路径。dev.bat 的 LF 行尾问题已改为 CRLF，验证时启动的开发实例已正常关闭。
-- 2026-10-28 修复待复验：重启系统后打开新标签，预期不再弹「DPI awareness 不一致」；host.log 应出现 `attach.dpi-mismatch ... hostContext=PerMonitorV2(96) targetContext=Unaware(96) allowed=True`。空闲 ≥20 秒确认工具栏不再周期性闪 X；快速新建不闪，长操作约 0.5 秒后才出现取消按钮。125% / 150% 下 rundll32 Unaware 仍会拒绝并提示顶层分组模式（有意保留的安全边界），请确认窗口保持独立、可分离。
-- 0.8.0 / 0.7.0 的应用 / 加入 / 分离 / 收藏旧菜单命名已被 0.11.0 菜单优化替代，不按历史命名验收；仍请验证加入长标题、快捷键对齐及管理弹窗的打开 / 编辑 / 保存 / 取消。
-- 0.7.0 弹窗 1px 边框、活动标签关闭后聚焦左邻、标签悬停 × 与目录 Tooltip 仍待真机反馈；X / Alt+F4 关闭标签窗口、未关完保留宿主的安全语义不变。
-- 0.7.0 修复：重启后新建的 ShellBrowserWindow 由注册的 rundll32 宿主托管时，恢复 / 加入 / 关闭按精确身份接管；需下次开机出现同场景时用 0.7.0 包实测“恢复上次会话”，并在 host.log 查看 `Creation inspect; ... image=...` 确认实际宿主。
-- 0.6.4 已发布：中键 / Ctrl+W 关闭、右键菜单快捷键、工具栏分组与图标、`+` 跟随最后一个标签、弹窗无边框自定义标题栏与小圆角；可从 GitHub Release 下载，或退出旧宿主后用本地 `dist/release/unpack` 刷新版本实测。
-- 新入口 `dist/release/unpack/ExplorerTabs.exe`（由 package.bat 产出）：先在旧宿主分离全部并正常退出，再手动运行；未自动关闭任何宿主或 Explorer。
-- 0.6.1 灰框 / Ribbon 空行、自适应标签与多行 / 单行切换、跨行排序及 125% / 150% DPI 仍待真机复验；离屏检查不等于人工验收。
-- 图标仍暂用 A；assets/icons/icon-choices.png 已更新 ExplorerTabs 名称，A / B / C 选择尚未确定。
+## 本轮关键改动位置
+- 标签右键“在右侧新建”：`MainForm.PopulateTabMenu` → `QueueCreateAtRightFromMenu` → `CreateTabAtRightAsync` / `CreateTabCoreAsync(source, insertAfter)`；`AttachCreatedCore` 只按锚点插入，默认目录来自设置，不复制来源。
+- 关闭立即切换：`MainForm.Commands.CloseTabAsync` 在目录读取和 `RequestClose` 之前调用 `TabManagementPolicy.CloseSuccessor` + `controller.Activate`，仍保留关闭中标签与恢复日志直到身份消失。
+- 菜单备注：`MainForm.WorkspaceUi.ShowShortcut / ShowNote` 统一使用 `ShortcutKeyDisplayString` 右侧列；“恢复上次会话”改为文字 + 备注“追加”；组项为“追加「名称（N标签）」”。
+- 保存标签组默认名：`MainForm.WorkspacePersistence.SaveGroupAsync` → `AskName("保存当前标签组", "我的标签组")`。
+- 全局快捷键 + 模态弹窗：`MainForm.Chrome.WndProc` 不再因 `modalDepth > 0` 丢弃 WM_HOTKEY；`MainForm.GlobalHotkey.ToggleHostVisibility` 在模态时只允许 `ShowHost`；`ShowHostFromHotkey` 同时激活 `OwnedForms` 中的可见弹窗。
+- 工具栏拖动：`MainForm.WorkspaceUi.InitializeWorkspaceUi` 给左右工具栏与 `ToolbarDivider` 挂 `ChromeMouseDown`；空白左键按住拖动窗口、双击最大化 / 还原、右键打开应用菜单。
+
+## 已确认的取舍：模态弹窗期间不切后台
+- 实测（`.runtime/probe` 探针）：宿主 `WindowState = Minimized` 时 Windows 会隐藏 owned 弹窗，WinForms 的 `ShowDialog` 因弹窗不可见而提前返回（`DialogResult=Cancel`）；只 `Hide()` 宿主则弹窗仍留在桌面，成为孤儿窗口。
+- 因此模态弹窗打开时全局快捷键只把宿主与弹窗带到前台，不最小化 / 隐藏；要支持切后台需把应用内弹窗改成非模态或自管模态循环，改动面大，本轮不做。
 
 ## 接续入口与安全
-- 本轮 DPI 修复的关键约束：跨进程 `SetParent` 在 awareness 不同时会让 Windows 强制重置子窗口 awareness；只在「Explorer 为 Unaware/UnawareGdiScaled/System + 宿主 PerMonitor/PMv2 + 双方 GetDpiForWindow 相等」时允许，反向 / 高 DPI mismatch 仍拒绝。`MatchThreadDpiToExplorer` 不得再采纳 Unaware/System 候选，避免宿主 UI 被降级。详见 ARCHITECTURE §3 / §4；不要改成“无条件放开”。
-- 0.6.3 发布、README 规范化与打包规则见 CHANGELOG；图谱 ARCHITECTURE §3.6 / §3.7，计划 ROADMAP P16 / P17 / P18。不要重做已完成的改名 / 界面 / 打包 / 发布工作。
-- Windows 入口：`build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `ci.bat` 与 `manager.sh` 对应；提交前跑 `verify.bat`。`run.bat` / `ci.bat` 会启动真实宿主或重建 dist，仅用户明确要求时手动执行。
-- ProductIdentity 的 LegacyIdentity 是兼容契约，不是漏改：继续旧 LocalAppData 目录与 per-user Local mutex；新旧宿主互斥，不自动迁移 / 覆盖数据。BrandingTests 只读旧程序集生成的合成 JSON，并使用独立 Guid 测试用户。
-- `scripts/build.ps1` 默认输出 `.runtime/build/ExplorerTabs-dev`（临时快照）；正式包用 `package.bat` / `sh manager.sh package`，版本取 Directory.Build.props。测试可追加 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke。
-- 打包先进入唯一 `.runtime/staging/package-<Guid>` 并持有独占文件锁，版本 / zip 验证后事务替换 dev / release；失败回滚，回滚不完整时保留 stage。仅成功后清本次 stage，历史包与其它 stage 不动。真实 package / dev 关闭宿主仍必须用户明确输入 Y，非交互拒绝；自动验证使用 fake 进程的独立 fixture。
-- `assets/screenshots/` 是 README 引用的离屏截图（单行 / 多行），不含真实 Explorer 内容；详细离屏日志仍在 artifacts/ui/v0.6.2/。
-- 所有旧 dist 原文件名 / 内容和 docs/manual-test.md / docs/v0.2-test.md 原文保留；历史 CHANGELOG / verification.md 中旧名是事实，不全局替换。
-- 原 D:/Git/zgithub/explorer_tab_host 已整体重命名；旧 F:/Developer/AI/vibe/agent_codex/ExplorerTabHost 备份不改；GitHub 仓库为 zouv/explorer-tabs。
+- 测试/校验：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke`；文档机械体检 `sh check-docs.sh`。
+- 构建/运行：开发期 `dev.bat` 构建并启动 `.runtime/build/ExplorerTabs-dev` 快照；正式包由 `package.bat` / `sh manager.sh package` 产出；运行中宿主仅在用户输入 Y 后关闭，非交互拒绝。
+- 安全铁律：不得自动启动交互宿主、接管或关闭用户已有 Explorer；自动测试限自建窗口和 fake Shell；窗口身份必须精确匹配，禁止按标题 / 最新窗口猜测；恢复日志先持久化再接管；不得覆盖运行中的发布包。
+- DPI 契约：跨进程 `SetParent` 仅在 Explorer 低 awareness + 宿主 PerMonitor/PMv2 + 有效 DPI 相等时允许；`MatchThreadDpiToExplorer` 不得采纳 Unaware/System 候选，不要改成“无条件放开”。
+- 关闭语义：每 session 去重，先持久化，只 `PostMessage(WM_CLOSE)`，不 detach / Quit / kill；6 秒未消失保留标签并可重试。
+- 打包：唯一 `.runtime/staging/package-<Guid>` + 独占文件锁，版本 / zip 校验后事务替换 dev / release，失败回滚；历史包与 stage 不清理。
+- 身份 / 数据：`ProductIdentity` 的 LegacyIdentity 是兼容契约（旧 LocalAppData 目录与 per-user Local mutex），不自动迁移 / 覆盖；旧 dist、docs/manual-test.md、docs/v0.2-test.md 原样保留。
+- 仓库卫生：提交 / 推送前检查 `git status --porcelain`，用 `git grep` 扫真实姓名 / 邮箱 / 用户名 / 本机路径 / 主机名；`.runtime/`、日志、缓存、profile 不入库。不得自动提交 / 推送 / 终止旧宿主，除非用户明确要求。

@@ -157,21 +157,27 @@ namespace ExplorerTabs.App
             return SelectedMode == HostingMode.Embedded ? bounds : content.RectangleToScreen(bounds);
         }
 
-        private void QueueCreateFromMenu(WindowSession session)
-        {
-            if (!IsDisposed && IsHandleCreated)
-                BeginInvoke(new Action(async () => { if (!IsDisposed && !closing) await CreateTabAsync(session); }));
-        }
+        private void QueueCreateFromMenu(WindowSession session) =>
+            QueueUi(() => CreateTabAsync(session));
 
-        private async Task CreateTabAsync(WindowSession? source)
+        private void QueueCreateAtRightFromMenu(WindowSession session) =>
+            QueueUi(() => CreateTabAtRightAsync(session));
+
+        private Task CreateTabAsync(WindowSession? source) => CreateTabCoreAsync(source, source);
+        // New tab next to an existing one without copying its directory: the anchor only
+        // controls where the pending/real tab is inserted.
+        private Task CreateTabAtRightAsync(WindowSession anchor) => CreateTabCoreAsync(null, anchor);
+
+        private async Task CreateTabCoreAsync(WindowSession? source, WindowSession? insertAfter)
         {
             if (closing || IsDisposed || creation != null || workspaceOperation != null || exitPreparing || explorerTabs.IsBusy || modalDepth > 0 || tabs.IsInteracting) return;
             if (source != null && (!controller.Sessions.Contains(source) || source.State != SessionState.Attached)) return;
+            if (insertAfter != null && (!controller.Sessions.Contains(insertAfter) || insertAfter.State != SessionState.Attached)) return;
             var request = new CancellationTokenSource(); creation = request;
             request.CancelAfter(15000);
             var requestId = Guid.NewGuid(); creationRequestId = requestId;
             var elapsed = Stopwatch.StartNew();
-            tabs.ShowPendingCreation(requestId, source);
+            tabs.ShowPendingCreation(requestId, insertAfter);
             // Switch the content area immediately; the old Explorer stays intact but hidden until
             // creation succeeds, fails or the user explicitly selects another tab.
             pendingView.Begin(source == null ? "正在打开新的 Explorer 窗口…" : "正在复制此标签的目录…",
@@ -195,7 +201,7 @@ namespace ExplorerTabs.App
                 if (closing || IsDisposed) return;
                 if (SelectedMode != requestedMode) throw new InvalidOperationException("挂载模式已改变，新建窗口保持独立。");
                 log.Write($"Create Shell ready; elapsedMs={elapsed.ElapsedMilliseconds}");
-                AttachCreatedCore(result, requestedMode, source);
+                AttachCreatedCore(result, requestedMode, insertAfter);
                 attached = true; pendingView.End();
                 log.Write($"Create attach/activate/UI ready; elapsedMs={elapsed.ElapsedMilliseconds}");
                 log.Write($"Create attached HWND=0x{result.Identity.Handle:X}; directory={result.Directory}");
@@ -237,7 +243,7 @@ namespace ExplorerTabs.App
         private void AttachCreated(CreatedExplorer result, HostingMode requestedMode) =>
             AttachCreatedCore(result, requestedMode, null);
 
-        private void AttachCreatedCore(CreatedExplorer result, HostingMode requestedMode, WindowSession? source)
+        private void AttachCreatedCore(CreatedExplorer result, HostingMode requestedMode, WindowSession? insertAfter)
         {
             var elapsed = Stopwatch.StartNew();
             WindowSession session;
@@ -256,10 +262,10 @@ namespace ExplorerTabs.App
             directoryCache[session] = result.Directory;
             workspaceTouched = true;
             presentation.Track(session.Identity, "explicit-create");
-            // Attach appends; persist the duplicate's position in the model, not only in the strip.
-            // Resolve the source by reference now so moves during creation follow its latest order.
-            int sourceIndex = source == null ? -1 : controller.Sessions.ToList().IndexOf(source);
-            if (sourceIndex >= 0) controller.MoveTab(session, sourceIndex + 1);
+            // Attach appends; persist the requested position in the model, not only in the strip.
+            // Resolve the insertion anchor by reference now so moves during creation follow its latest order.
+            int anchorIndex = insertAfter == null ? -1 : controller.Sessions.ToList().IndexOf(insertAfter);
+            if (anchorIndex >= 0) controller.MoveTab(session, anchorIndex + 1);
             if (creationRequestId.HasValue) tabs.CompletePendingCreation(creationRequestId.Value, session);
             RefreshTabs(); tabs.Reveal(session);
         }
@@ -560,12 +566,14 @@ namespace ExplorerTabs.App
             var close = menu.Items.Add("关闭标签", null, (_, __) => QueueUi(() => CloseTabAsync(session)));
             close.Enabled = CanUseTab(session);
             close.ToolTipText = "关闭此标签对应的 Explorer 窗口；窗口未关闭时保留标签。";
-            close.ForeColor = Color.FromArgb(166, 49, 49);
             ShowShortcut(close, ShortcutChord(HostCommand.CloseTab));
             var duplicate = menu.Items.Add("复制标签", null, (_, __) => QueueCreateFromMenu(session));
             duplicate.Enabled = CanUseTab(session) && controller.Sessions.Count < 100;
             duplicate.ToolTipText = "在此标签右侧打开当前目录的新标签，不复制文件。";
             ShowShortcut(duplicate, ShortcutChord(HostCommand.DuplicateTab));
+            var createRight = menu.Items.Add("在右侧新建", null, (_, __) => QueueCreateAtRightFromMenu(session));
+            createRight.Enabled = CanUseTab(session) && controller.Sessions.Count < 100;
+            createRight.ToolTipText = "在此标签右侧打开新标签，使用设置中的默认目录。";
             menu.Items.Add(new ToolStripSeparator());
             var favorite = menu.Items.Add("收藏此目录…", null, (_, __) => QueueUi(() => AddFavoriteAsync(session)));
             favorite.Enabled = CanUseTab(session) && CanReadDirectory(session) && libraryStore != null;

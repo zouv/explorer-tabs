@@ -16,7 +16,18 @@ namespace ExplorerTabs.App
             if (closing || exitPreparing || creation != null || !controller.Sessions.Contains(session) || session.State != SessionState.Attached || session.CloseRequestedUtc != null || workspaceOperation != null || closeReading.ContainsKey(session)) return;
             var token = new CancellationTokenSource(); closeReading.Add(session, token);
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            tabs.SetCloseReading(session, true); RefreshTabs();
+            tabs.SetCloseReading(session, true);
+            // The successor is known from the current tab model. Switch before the bounded
+            // directory read / WM_CLOSE round-trip so closing the active tab feels immediate.
+            if (controller.Active == session)
+            {
+                var available = controller.Sessions.Where(s => s != session && s.State == SessionState.Attached && s.CloseRequestedUtc == null).ToArray();
+                var next = TabManagementPolicy.CloseSuccessor(controller.Sessions, session, session, available);
+                if (next != null)
+                    try { controller.Activate(next, CurrentBounds(), CanPresentExplorer, CanPresentExplorer); }
+                    catch (Exception error) { log.Write("Close successor activation failed; closing session retained", error); }
+            }
+            RefreshTabs();
             try
             {
                 WorkspaceTab? reopen = null;
@@ -36,15 +47,6 @@ namespace ExplorerTabs.App
                 controller.RequestClose(session); if (reopen != null) pendingClosed[session] = reopen;
                 workspaceTouched = true;
                 log.Write($"Close requested HWND=0x{session.Identity.Handle:X}; elapsedMs={elapsed.ElapsedMilliseconds}; journal retained until disappearance; no detach/process kill");
-                // Switch content now, but retain the closing tab/journal until identity disappearance.
-                if (controller.Active == session)
-                {
-                    var available = controller.Sessions.Where(s => s != session && s.State == SessionState.Attached && s.CloseRequestedUtc == null).ToArray();
-                    var next = TabManagementPolicy.CloseSuccessor(controller.Sessions, session, session, available);
-                    if (next != null)
-                        try { controller.Activate(next, CurrentBounds(), CanPresentExplorer, CanPresentExplorer); }
-                        catch (Exception error) { log.Write("Close successor activation failed; closing session retained", error); }
-                }
                 closeMonitor.Start();
                 status.Text = "已请求关闭；正在快速确认目标窗口，不强制结束进程。";
             }
