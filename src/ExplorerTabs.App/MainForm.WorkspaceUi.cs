@@ -32,6 +32,14 @@ namespace ExplorerTabs.App
         private readonly Label sessionOfferText = new Label { AutoSize = true, Margin = new Padding(4, 5, 4, 5) };
         private readonly ActionButton sessionOfferRestore = new ActionButton("重新打开上次会话", true) { Width = 176, Height = 30 };
         private readonly ActionButton sessionOfferDismiss = new ActionButton("暂不打开") { Width = 88, Height = 30 };
+        // Restore feedback lives next to the startup offer. It must stay visible while the
+        // Shell is starting up and the batch is waiting to retry, and users can stop waiting.
+        private readonly FlowLayoutPanel restoreBanner = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(8, 4, 8, 4), BackColor = Color.FromArgb(230, 239, 252), Visible = false };
+        private readonly Label restoreBannerText = new Label { AutoSize = true, Margin = new Padding(4, 5, 4, 5) };
+        private readonly ActionButton restoreStop = new ActionButton("停止恢复", true) { Width = 96, Height = 30 };
+        private readonly ActionButton restoreClose = new ActionButton("关闭") { Width = 76, Height = 30, Visible = false };
+        private static readonly Color RestoreWaitColor = Color.FromArgb(255, 246, 222);
+        private bool restoringWorkspace;
         private SavedWorkspace? offeredSession;
         private int startupMissingWindows;
         private bool sessionOfferDismissed;
@@ -91,6 +99,12 @@ namespace ExplorerTabs.App
             sessionOffer.SetFlowBreak(sessionOfferText, true);
             sessionOffer.SizeChanged += (_, __) => LayoutSessionOffer();
             Controls.Add(sessionOffer); Controls.SetChildIndex(sessionOffer, Controls.GetChildIndex(chrome!) - 1);
+            restoreStop.Click += (_, __) => StopWorkspaceRestore();
+            restoreClose.Click += (_, __) => restoreBanner.Visible = false;
+            restoreBanner.Controls.AddRange(new Control[] { restoreBannerText, restoreStop, restoreClose });
+            restoreBanner.SetFlowBreak(restoreBannerText, true);
+            restoreBanner.SizeChanged += (_, __) => LayoutRestoreBanner();
+            Controls.Add(restoreBanner); Controls.SetChildIndex(restoreBanner, Controls.GetChildIndex(sessionOffer) - 1);
             tabs.ConfigureLayout(settings.WrapTabs, settings.MaximumTabRows);
         }
         // Menu opening owns a modal scope. Do not include modalDepth here: queued actions
@@ -176,6 +190,7 @@ namespace ExplorerTabs.App
         }
         private void ShowSessionOffer()
         {
+            if (restoringWorkspace) return;
             offeredSession = library.LastSession?.Copy();
             bool canOffer = settings.RememberSession && offeredSession != null;
             if (startupMissingWindows > 0)
@@ -197,6 +212,74 @@ namespace ExplorerTabs.App
         {
             int width = Math.Max(1, sessionOffer.ClientSize.Width - sessionOffer.Padding.Horizontal - sessionOfferText.Margin.Horizontal);
             if (sessionOfferText.MaximumSize.Width != width) sessionOfferText.MaximumSize = new Size(width, 0);
+        }
+        private void BeginRestoreBanner(SavedWorkspace saved)
+        {
+            restoringWorkspace = true;
+            restoreBanner.BackColor = sessionOffer.BackColor;
+            restoreBannerText.Text = $"正在恢复「{saved.Name}」…";
+            restoreStop.Visible = true; restoreStop.Enabled = true;
+            restoreClose.Visible = false;
+            restoreBanner.Visible = true;
+            LayoutRestoreBanner();
+        }
+        private void ShowRestoreProgress(SavedWorkspace saved, int index, int attempt)
+        {
+            if (!restoringWorkspace || IsDisposed) return;
+            restoreBanner.BackColor = sessionOffer.BackColor;
+            restoreBannerText.Text = $"正在恢复「{saved.Name}」：{index + 1} / {saved.Tabs.Count} · {saved.Tabs[index].Directory}" +
+                (attempt > 0 ? $"（第 {attempt + 1} 次尝试）" : "");
+            LayoutRestoreBanner();
+        }
+        private void ShowRestoreWaiting(SavedWorkspace saved, int index, int attempt, Exception error, TimeSpan delay)
+        {
+            if (!restoringWorkspace || IsDisposed) return;
+            restoreBanner.BackColor = RestoreWaitColor;
+            restoreBannerText.Text = $"正在恢复「{saved.Name}」：{index + 1} / {saved.Tabs.Count} · {saved.Tabs[index].Directory}\r\n" +
+                $"{WorkspaceRestorePolicy.Describe(error)}；{Math.Max(1, (int)Math.Ceiling(delay.TotalSeconds))} 秒后进行第 {attempt + 1} 次尝试…";
+            LayoutRestoreBanner();
+        }
+        private void ShowRestoreBusy(SavedWorkspace saved, int index)
+        {
+            if (!restoringWorkspace || IsDisposed) return;
+            restoreBanner.BackColor = RestoreWaitColor;
+            restoreBannerText.Text = $"正在恢复「{saved.Name}」：{index + 1} / {saved.Tabs.Count} · 正在等待上一次 Shell 调用结束…";
+            LayoutRestoreBanner();
+        }
+        private void CompleteRestoreBanner(int restored, int total, IReadOnlyList<string> failures, bool stopped)
+        {
+            if (!restoringWorkspace || IsDisposed) return;
+            restoringWorkspace = false;
+            restoreStop.Visible = false;
+            restoreClose.Visible = true;
+            restoreBanner.BackColor = stopped || failures.Count > 0 ? RestoreWaitColor : sessionOffer.BackColor;
+            restoreBannerText.Text = stopped
+                ? $"已停止恢复：已打开 {restored} / {total} 个标签；其余可手动新建。"
+                : failures.Count == 0
+                    ? $"恢复完成：已打开 {restored} / {total} 个标签。"
+                    : $"恢复完成：已打开 {restored} / {total} 个标签；{failures.Count} 个未打开：\r\n" + string.Join("\r\n", failures);
+            restoreBanner.Visible = true;
+            LayoutRestoreBanner();
+        }
+        private void AbandonRestoreBanner()
+        {
+            if (!restoringWorkspace) return;
+            restoringWorkspace = false;
+            if (IsDisposed) return;
+            restoreStop.Visible = false; restoreClose.Visible = false; restoreBanner.Visible = false;
+        }
+        private void StopWorkspaceRestore()
+        {
+            if (!restoringWorkspace || workspaceOperation == null) return;
+            restoreStop.Enabled = false;
+            restoreBannerText.Text = "正在停止恢复…已打开的标签会保留。";
+            LayoutRestoreBanner();
+            workspaceOperation.Cancel();
+        }
+        private void LayoutRestoreBanner()
+        {
+            int width = Math.Max(1, restoreBanner.ClientSize.Width - restoreBanner.Padding.Horizontal - restoreBannerText.Margin.Horizontal);
+            if (restoreBannerText.MaximumSize.Width != width) restoreBannerText.MaximumSize = new Size(width, 0);
         }
         private void ShowAddWindowsMenu()
         {
@@ -273,8 +356,10 @@ namespace ExplorerTabs.App
                 closedManagedMenus.Remove(menu);
                 if (scope == null) scope = EnterModal(); log.Write("Menu opened: " + menu.Name);
             };
+            menu.Opened += (_, __) => { if (menu.Visible) menuDismiss.Register(menu); };
             menu.Closed += (_, e) =>
             {
+                menuDismiss.Unregister(menu);
                 log.Write("Menu close queued: " + menu.Name + "; reason=" + e.CloseReason);
                 // Closed is still inside WinForms' SetVisibleCore/ModalMenuFilter close pipeline.
                 // Do not dispose the dropdown (or restore grouped windows) until it has returned.
@@ -282,9 +367,22 @@ namespace ExplorerTabs.App
             };
             menu.Disposed += (_, __) =>
             {
+                menuDismiss.Unregister(menu);
                 managedMenuCleanups.Remove(menu); closedManagedMenus.Remove(menu);
                 releaseScope(); log.Write("Menu disposed: " + menu.Name);
             };
+        }
+        /// <summary>Closes host-owned menus for a mouse press that landed outside them.
+        /// The click itself is not consumed: the embedded Explorer still receives it.</summary>
+        private void DismissMenusOutside(Point screenPoint)
+        {
+            if (disposingUi || IsDisposed || Disposing || closing || exitPreparing) return;
+            foreach (var menu in managedMenuCleanups.Keys.ToArray())
+            {
+                if (menu.IsDisposed || !menu.Visible || MenuDismissMonitor.IsInsideMenuTree(menu, screenPoint)) continue;
+                try { menu.Close(ToolStripDropDownCloseReason.AppClicked); }
+                catch (Exception error) { log.Write("Menu dismiss close failed: " + menu.Name, error); }
+            }
         }
         private void QueueManagedMenuCleanup(ContextMenuStrip menu)
         {

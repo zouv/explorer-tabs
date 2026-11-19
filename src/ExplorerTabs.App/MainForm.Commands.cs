@@ -209,7 +209,7 @@ namespace ExplorerTabs.App
                 case HostCommand.SaveSession: await SaveSessionAsync(false); break;
                 default:
                     var available = controller.Sessions.Where(s => s.State == SessionState.Attached).ToArray(); WindowSession? target = null;
-                    if (command >= HostCommand.Tab1) { int index = command == HostCommand.Tab9 ? available.Length - 1 : (int)command - (int)HostCommand.Tab1; if (index >= 0 && index < available.Length) target = available[index]; }
+                    if (command >= HostCommand.Tab1) { int index = command == HostCommand.LastTab ? available.Length - 1 : (int)command - (int)HostCommand.Tab1; if (index >= 0 && index < available.Length) target = available[index]; }
                     else target = controller.Adjacent(command == HostCommand.NextTab || command == HostCommand.NextPage ? 1 : -1);
                     if (target != null) { SelectTab(target); NativeWindowApi.FocusAfterShortcut(target.Snapshot); }
                     break;

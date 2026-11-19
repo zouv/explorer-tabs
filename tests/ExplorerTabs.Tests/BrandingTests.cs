@@ -78,9 +78,11 @@ namespace ExplorerTabs.Tests
                 Check(settings.WrapTabs && settings.MaximumTabRows == 4 && settings.Maximized, "legacy UI preferences preserved");
                 Check(settings.Bounds.Left == -100 && settings.Bounds.Top == 50 && settings.Bounds.Right == 1200 && settings.Bounds.Bottom == 850,
                     "legacy window bounds preserved");
-                Check(settings.KeyBindings.Count == 22 && settings.KeyBindings.Any(k => k.Command == HostCommand.CloseTab && k.Chord == "Ctrl+W"),
-                    "legacy shortcut commands and chords preserved");
-                CheckLegacyRoundTrip(settingsPath, settings);
+                Check(settings.KeyBindings.Count == 23 && settings.KeyBindings.Any(k => k.Command == HostCommand.CloseTab && k.Chord == "Ctrl+W") &&
+                    settings.KeyBindings.Single(k => k.Command == HostCommand.LastTab).Chord == "Ctrl+0",
+                    "legacy shortcut commands and chords preserved; new last-tab command upgraded");
+                var legacyShape = settings.Copy(); legacyShape.KeyBindings.RemoveAll(k => k.Command == HostCommand.LastTab);
+                CheckLegacyRoundTrip(settingsPath, legacyShape);
 
                 string workspacePath = Path.Combine(state, "workspace.json");
                 var workspace = new WorkspaceLibraryStore(workspacePath).Read()!;

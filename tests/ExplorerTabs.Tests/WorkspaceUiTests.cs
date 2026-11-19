@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -100,6 +101,18 @@ namespace ExplorerTabs.Tests
                     var pending = WorkspaceTask(form, "OpenWorkspaceAsync", SampleWorkspace()); UiField<CancellationTokenSource>(form, "workspaceOperation").Cancel(); cancelService.FinishCreate(); PumpTask(pending);
                     Check(cancelHost.Sessions.Count == 0 && cancelService.Creates == 1, "cancelled restore never attaches late success or starts remaining tabs");
                 }
+                RestoreRetryUiTests(directory);
+                var keyApi = new FakeWindows(); for (int i = 5; i <= 10; i++) keyApi.Alive.Add(i);
+                var keyHost = new HostController(keyApi, new FakeStore());
+                for (int i = 1; i <= 10; i++) Add(keyHost, i);
+                keyHost.Activate(keyHost.Sessions[0], Bounds);
+                using (var form = WorkspaceForm(keyHost, new WorkspaceService(), directory, new WorkspaceStore()))
+                {
+                    PumpTask(WorkspaceTask(form, "ExecuteCommandAsync", HostCommand.Tab9));
+                    Check(keyHost.Active == keyHost.Sessions[8], "Ctrl+9 selects the ninth tab instead of the last");
+                    PumpTask(WorkspaceTask(form, "ExecuteCommandAsync", HostCommand.LastTab));
+                    Check(keyHost.Active == keyHost.Sessions[9], "Ctrl+0 selects the last tab");
+                }
                 var disposedHost = new HostController(new FakeWindows(), new FakeStore()); var disposeService = new WorkspaceService { HoldCreate = true };
                 var disposed = WorkspaceForm(disposedHost, disposeService, directory, new WorkspaceStore());
                 var lateRestore = WorkspaceTask(disposed, "OpenWorkspaceAsync", SampleWorkspace()); disposed.Dispose(); disposeService.FinishCreate(); PumpTask(lateRestore);
@@ -120,6 +133,54 @@ namespace ExplorerTabs.Tests
             {
                 SynchronizationContext.SetSynchronizationContext(context);
                 foreach (var own in Directory.GetFiles(directory)) File.Delete(own); Directory.Delete(directory);
+            }
+        }
+        private static void RestoreRetryUiTests(string directory)
+        {
+            var retryHost = new HostController(new FakeWindows(), new FakeStore()); var retryService = new WorkspaceService();
+            retryService.CreateFailures.Enqueue(new COMException("未指定的错误", unchecked((int)0x80004005)));
+            retryService.CreateFailures.Enqueue(new InvalidOperationException("Shell 未返回窗口"));
+            var saved = SampleWorkspace();
+            using (var form = WorkspaceForm(retryHost, retryService, directory, new WorkspaceStore()))
+            {
+                MainType.GetProperty("RestoreRetryDelay", PrivateInstance)!.SetValue(form, new Func<int, TimeSpan>(_ => TimeSpan.FromMilliseconds(10)));
+                var pending = WorkspaceTask(form, "OpenWorkspaceAsync", saved);
+                Check(UiField<FlowLayoutPanel>(form, "restoreBanner").Visible && UiField<FlowLayoutPanel>(form, "restoreBanner").Height > 0,
+                    "restore shows a laid-out progress banner immediately instead of staying silent");
+                Check(PumpUntil(() => retryService.Creates >= 3, 2000),
+                    "transient Shell activation failures are retried without user action");
+                PumpTask(pending);
+                Check(retryHost.Sessions.Count == saved.Tabs.Count && retryService.Creates == saved.Tabs.Count + 2,
+                    "retry resumes the batch and restores every saved tab");
+                Check(UiField<Label>(form, "restoreBannerText").Text.Contains("恢复完成") && UiField<Button>(form, "restoreClose").Visible,
+                    "completed restore leaves a visible result instead of a modal failure");
+            }
+            var stopHost = new HostController(new FakeWindows(), new FakeStore()); var stopService = new WorkspaceService();
+            stopService.CreateFailures.Enqueue(new COMException("未指定的错误", unchecked((int)0x80004005)));
+            using (var form = WorkspaceForm(stopHost, stopService, directory, new WorkspaceStore()))
+            {
+                MainType.GetProperty("RestoreRetryDelay", PrivateInstance)!.SetValue(form, new Func<int, TimeSpan>(_ => TimeSpan.FromSeconds(30)));
+                var pending = WorkspaceTask(form, "OpenWorkspaceAsync", SampleWorkspace());
+                Check(PumpUntil(() => UiField<Label>(form, "restoreBannerText").Text.Contains("尚未就绪"), 1000),
+                    "waiting banner shows the Shell failure reason and the retry");
+                Check(UiField<Button>(form, "restoreStop").Visible, "stop control is offered while waiting");
+                UiField<Button>(form, "restoreStop").PerformClick();
+                PumpTask(pending);
+                Check(stopHost.Sessions.Count == 0 && stopService.Creates == 1,
+                    "stopping the wait cancels further retries and keeps the batch stopped");
+                Check(UiField<Label>(form, "restoreBannerText").Text.Contains("已停止恢复"),
+                    "stopped restore reports that remaining tabs can be opened manually");
+            }
+            var permanentHost = new HostController(new FakeWindows(), new FakeStore()); var permanentService = new WorkspaceService();
+            permanentService.CreateFailures.Enqueue(new ExplorerDirectoryUnavailableException(@"C:\Gone"));
+            using (var form = WorkspaceForm(permanentHost, permanentService, directory, new WorkspaceStore()))
+            {
+                MainType.GetProperty("RestoreRetryDelay", PrivateInstance)!.SetValue(form, new Func<int, TimeSpan>(_ => TimeSpan.FromMilliseconds(10)));
+                PumpTask(WorkspaceTask(form, "OpenWorkspaceAsync", SampleWorkspace()));
+                Check(permanentService.Creates == 2 && permanentHost.Sessions.Count == 1,
+                    "missing directory is reported once and the batch continues without infinite retry");
+                Check(UiField<Label>(form, "restoreBannerText").Text.Contains("文件夹不存在"),
+                    "permanent failure reason stays visible in the restore banner");
             }
         }
         private static void StartupRecoveryOfferTests(string directory)
@@ -196,6 +257,9 @@ namespace ExplorerTabs.Tests
                     var child = parent.DropDown; int disposalCount = 0; menu.Disposed += (_, __) => disposalCount++;
                     UiCall(form, "ShowManagedMenu", menu, UiField<Button>(form, "newTab"));
                     Check(UiField<int>(form, "modalDepth") == 1, "menu opening blocks shortcuts without showing an interactive popup: " + reason);
+                    var dismissMonitor = UiField<object>(form, "menuDismiss");
+                    Check(!(bool)dismissMonitor.GetType().GetProperty("IsActive")!.GetValue(dismissMonitor)!,
+                        "hidden lifecycle probe never installs the global menu-dismiss hook: " + reason);
                     menu.FinishClose(reason); menu.FinishClose(reason);
                     Check(!menu.IsDisposed && !child.IsDisposed && UiField<int>(form, "modalDepth") == 1, "Closed keeps root/submenu and scope alive until close returns: " + reason);
                     Application.DoEvents();
@@ -534,6 +598,33 @@ namespace ExplorerTabs.Tests
                 Check(manager.DialogResult == DialogResult.OK && pending != null && pending.Tabs.Count == 2,
                     "opening a group reports its full ordered directory list");
             }
+            using (var manager = (Form)Activator.CreateInstance(managerType, sampleLibrary)!)
+            {
+                MakeHidden(manager);
+                var pages = manager.Controls.OfType<TableLayoutPanel>().Single().Controls.OfType<TabControl>().Single();
+                pages.SelectedIndex = 1; manager.PerformLayout();
+                var groupsView = UiField<ListView>(manager, "groups");
+                groupsView.Items[0].Selected = true;
+                var tabView = UiField<ListView>(manager, "groupTabs");
+                Check(tabView.Items.Count == 2 && tabView.Items[0].SubItems[1].Text == @"C:\One" && tabView.Items[1].SubItems[1].Text == @"C:\Two",
+                    "group editor lists the selected group's ordered directories");
+                tabView.Items[1].Selected = true;
+                Check(UiField<Button>(manager, "moveGroupTabUp").Enabled, "selected group entry can move up");
+                UiField<Button>(manager, "moveGroupTabUp").PerformClick();
+                var editedGroup = (SavedWorkspace)groupsView.Items[0].Tag;
+                Check(editedGroup.Tabs[0].Directory == @"C:\Two" && editedGroup.Tabs[1].Directory == @"C:\One" && editedGroup.ActiveIndex == 1,
+                    "group editor reorders entries and keeps the active index on the same tab");
+                tabView.Items[0].Selected = true;
+                UiField<Button>(manager, "removeGroupTab").PerformClick();
+                Check(editedGroup.Tabs.Count == 1 && editedGroup.ActiveIndex == 0 && !UiField<Button>(manager, "removeGroupTab").Enabled,
+                    "group editor removes an entry while keeping at least one tab and a valid active index");
+                Check((bool)managerType.GetProperty("Dirty")!.GetValue(manager)!, "editing group content marks the manager dirty");
+                UiField<Button>(manager, "save").PerformClick();
+                var savedLibrary = (WorkspaceLibrary)managerType.GetProperty("Result")!.GetValue(manager)!;
+                Check(manager.DialogResult == DialogResult.OK && savedLibrary.Groups[0].Tabs.Count == 1 &&
+                    savedLibrary.Groups[0].Tabs[0].Directory == @"C:\One" && sampleLibrary.Groups[0].Tabs.Count == 2,
+                    "saving group edits returns the changed group and leaves the live library untouched");
+            }
             using (var picker = CreatePicker())
             {
                 MakeHidden(picker); Check(!picker.ShowIcon && HasWindowRegion(picker), "picker dialog removes the inherited title-bar icon and applies a small rounded region");
@@ -588,6 +679,7 @@ namespace ExplorerTabs.Tests
         private sealed class WorkspaceService : IExplorerTabService, IExplorerDirectoryService
         {
             private bool busy; public bool IsBusy => busy; public bool Reading; public bool IsReading => Reading; public bool HoldRead, HoldCreate; public long FailHandle, NextHandle = 1; public int Creates;
+            public readonly Queue<Exception> CreateFailures = new Queue<Exception>();
             public readonly Dictionary<long, string> Paths = new Dictionary<long, string>(); public readonly List<string> CreatedPaths = new List<string>(); public readonly List<long[]> Exclusions = new List<long[]>();
             private TaskCompletionSource<string>? read; private TaskCompletionSource<CreatedExplorer>? create; private string heldPath = "", heldCreatePath = ""; private CancellationTokenRegistration registration;
             public Task<string> ReadDirectoryAsync(WindowIdentity identity, CancellationToken token)
@@ -600,6 +692,7 @@ namespace ExplorerTabs.Tests
             public Task<CreatedExplorer> CreateAsync(string directory, WindowIdentity? source, IReadOnlyCollection<long> attached, CancellationToken token)
             {
                 Creates++; CreatedPaths.Add(directory); Exclusions.Add(attached.ToArray());
+                if (CreateFailures.Count > 0) return Task.FromException<CreatedExplorer>(CreateFailures.Dequeue());
                 if (!HoldCreate) return Task.FromResult(new CreatedExplorer(Identity(NextHandle++), directory)); busy = true; heldCreatePath = directory; create = new TaskCompletionSource<CreatedExplorer>(TaskCreationOptions.RunContinuationsAsynchronously); return create.Task;
             }
             public void FinishCreate() { busy = false; HoldCreate = false; create!.TrySetResult(new CreatedExplorer(Identity(NextHandle++), heldCreatePath)); }

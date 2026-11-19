@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ExplorerTabs.Core;
@@ -40,7 +41,7 @@ namespace ExplorerTabs.Tests
                 File.WriteAllBytes(path, new byte[1024 * 1024 + 1]); Throws(() => store.Read()); Check(new FileInfo(path).Length == 1024 * 1024 + 1, "oversized workspace rejected without rewriting");
                 var settingsPath = Path.Combine(directory, "settings.json"); File.WriteAllText(settingsPath, "{\"Version\":1,\"Mode\":0,\"ShortcutsEnabled\":true,\"NewTabDirectory\":\"C:\\\\Temp\"}");
                 var old = new AppSettingsStore(settingsPath).Read()!;
-                Check(!old.WrapTabs && old.MaximumTabRows == 3 && old.RememberSession && old.KeyBindings.Count == 22, "0.4 settings gain safe 0.5 defaults when new fields are missing");
+                Check(!old.WrapTabs && old.MaximumTabRows == 3 && old.RememberSession && old.KeyBindings.Count == 23, "0.4 settings gain safe 0.5 defaults when new fields are missing");
                 old.WrapTabs = true; old.MaximumTabRows = 5; old.KeyBindings[0].Chord = ""; new AppSettingsStore(settingsPath).Save(old);
                 var reread = new AppSettingsStore(settingsPath).Read()!;
                 Check(reread.WrapTabs && reread.MaximumTabRows == 5 && reread.KeyBindings[0].Chord == "", "wrap and disabled shortcuts persist"); var settingsCopy = reread.Copy(); settingsCopy.KeyBindings[1].Chord = "";
@@ -49,6 +50,22 @@ namespace ExplorerTabs.Tests
             finally { foreach (var path in Directory.GetFiles(directory)) File.Delete(path); Directory.Delete(directory); }
             Check(TabSearchPolicy.Matches("开发 & 资料", @"D:\Project\Assets", "资料 assets") && !TabSearchPolicy.Matches("资料", @"C:\Temp", "资料 missing"), "search combines Unicode title and case-insensitive directory tokens with AND");
             Check(TabSearchPolicy.Matches("任意", "", "  \t ") && TabLayoutPolicy.Rows(100, 700, 216) == 34, "empty search and overflow row calculations");
+            var transient = new COMException("未指定的错误", unchecked((int)0x80004005));
+            Check(WorkspaceRestorePolicy.IsRetryable(transient), "E_FAIL during Shell activation is retryable");
+            Check(WorkspaceRestorePolicy.IsRetryable(new COMException("rpc", unchecked((int)0x800706BA))), "RPC server unavailable is retryable");
+            Check(!WorkspaceRestorePolicy.IsRetryable(new COMException("path", unchecked((int)0x80070003))), "non-transient COM failure is not retried");
+            Check(!WorkspaceRestorePolicy.IsRetryable(new ExplorerDirectoryUnavailableException(@"C:\Gone")), "missing saved directory is reported without retry");
+            Check(!WorkspaceRestorePolicy.IsRetryable(new InvalidOperationException("identity changed")), "identity failures are not retried");
+            Check(WorkspaceRestorePolicy.IsRetryable(new OperationCanceledException()), "per-item Shell timeout is retryable");
+            Check(WorkspaceRestorePolicy.IsRetryable(new ExplorerCreationTransientException(new InvalidOperationException("Shell 未返回窗口"))),
+                "generic Shell creation failure is retryable while the environment may still be starting");
+            Check(WorkspaceRestorePolicy.Describe(new ExplorerCreationTransientException(transient)).Contains("0x80004005"),
+                "wrapped transient failure keeps the actionable HRESULT");
+            Check(WorkspaceRestorePolicy.RetryDelay(1) == TimeSpan.FromSeconds(1) && WorkspaceRestorePolicy.RetryDelay(3) == TimeSpan.FromSeconds(3) &&
+                WorkspaceRestorePolicy.RetryDelay(20) == TimeSpan.FromSeconds(5), "retry backoff grows then caps at five seconds");
+            Check(WorkspaceRestorePolicy.Describe(transient).Contains("0x80004005") &&
+                WorkspaceRestorePolicy.Describe(new ExplorerDirectoryUnavailableException(@"C:\Gone")).Contains("文件夹不存在"),
+                "restore failures expose an actionable reason");
             var bindings = HostShortcutCatalog.Defaults(); HostShortcutCatalog.Validate(bindings);
             foreach (var binding in bindings)
             {
@@ -59,6 +76,15 @@ namespace ExplorerTabs.Tests
             }
             var shortcuts = bindings.Select(b => b.Copy()).ToList(); shortcuts[1].Chord = shortcuts[0].Chord; Throws(() => HostShortcutCatalog.Validate(shortcuts));
             Check(true, "duplicate shortcut cannot save"); shortcuts = bindings.Select(b => b.Copy()).ToList(); shortcuts.RemoveAt(0); Throws(() => HostShortcutCatalog.Validate(shortcuts)); Check(true, "missing command cannot save");
+            Check(HostShortcutCatalog.Name(HostCommand.Tab9) == "跳到第 9 个标签" && HostShortcutCatalog.Name(HostCommand.LastTab) == "跳到最后一个标签",
+                "Ctrl+9 selects the ninth tab and Ctrl+0 selects the last tab");
+            Check(bindings.Single(b => b.Command == HostCommand.Tab9).Chord == "Ctrl+9" && bindings.Single(b => b.Command == HostCommand.LastTab).Chord == "Ctrl+0",
+                "default shortcuts bind Ctrl+9 and Ctrl+0 independently");
+            var legacyBindings = HostShortcutCatalog.Defaults().Where(b => b.Command != HostCommand.LastTab).ToList();
+            HostShortcutCatalog.Upgrade(legacyBindings);
+            Check(legacyBindings.Count == HostShortcutCatalog.Defaults().Count &&
+                legacyBindings.Single(b => b.Command == HostCommand.LastTab).Chord == "Ctrl+0",
+                "older settings gain the new last-tab command instead of failing validation");
             foreach (var scenario in new[] { "foreign", "injected", "win", "busy", "inactive", "switch" })
             {
                 var p = new HostShortcutPolicy(); string chord = scenario == "switch" ? "Ctrl+Tab" : scenario == "busy" ? "Ctrl+T" : "Ctrl+W";

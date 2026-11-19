@@ -44,6 +44,7 @@ namespace ExplorerTabs.App
         private readonly IconButton cancelCreation = new IconButton(UiGlyph.Cancel, "取消操作") { Visible = false };
         private readonly System.Windows.Forms.Timer cancelRevealTimer = new System.Windows.Forms.Timer { Interval = 450 };
         private bool cancelWanted;
+        private readonly MenuDismissMonitor menuDismiss;
 
         public MainForm(HostController controller, AppLog log)
             : this(controller, log, new AppSettings(), null, new StaExplorerTabService(() => new ShellExplorerBackend())) { }
@@ -53,6 +54,11 @@ namespace ExplorerTabs.App
             this.settings = settings.Copy(); this.settingsStore = settingsStore; this.explorerTabs = explorerTabs;
             this.controller = controller;
             this.log = log;
+            menuDismiss = new MenuDismissMonitor(point =>
+            {
+                try { if (!IsDisposed && !Disposing && IsHandleCreated) BeginInvoke(new Action(() => DismissMenusOutside(point))); }
+                catch (InvalidOperationException) { }
+            }, message => log.Write(message));
             presentation = new PresentationMonitor(log);
             Text = ProductIdentity.Name + " " + typeof(MainForm).Assembly.GetName().Version!.ToString(3);
             Font = new Font("Microsoft YaHei UI", 9F);
@@ -832,7 +838,7 @@ namespace ExplorerTabs.App
                 foreach (var close in closeReading.Values.ToArray()) close.Cancel();
                 workspaceOperation?.Cancel(); creation?.Cancel(); keyboard?.Dispose(); monitor.Dispose(); closeMonitor.Stop(); closeMonitor.Dispose();
                 cancelRevealTimer.Stop(); cancelRevealTimer.Dispose();
-                DisposeManagedMenus(); presentation.Dispose(); chromeTips.Dispose();
+                DisposeManagedMenus(); presentation.Dispose(); chromeTips.Dispose(); menuDismiss.Dispose();
                 globalHotkeys.Unregister(); hotkeyRegistrationActive = false; DisposeTray();
             }
             base.Dispose(disposing);

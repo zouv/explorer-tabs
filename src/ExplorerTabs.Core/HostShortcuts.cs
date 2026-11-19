@@ -7,7 +7,7 @@ using System.Runtime.Serialization;
 namespace ExplorerTabs.Core
 {
     public enum HostCommand { None, NewTab, CloseTab, SearchTabs, Commands, ReopenTab, DuplicateTab, NextTab, PreviousTab,
-        NextPage, PreviousPage, Settings, RenameTab, SaveSession, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9 }
+        NextPage, PreviousPage, Settings, RenameTab, SaveSession, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6, Tab7, Tab8, Tab9, LastTab }
     [DataContract] public sealed class HostShortcut
     {
         [DataMember] public HostCommand Command { get; set; }
@@ -27,7 +27,16 @@ namespace ExplorerTabs.Core
             Add(HostCommand.NextPage, "Ctrl+PageDown"); Add(HostCommand.PreviousPage, "Ctrl+PageUp");
             Add(HostCommand.Settings, "Ctrl+,"); Add(HostCommand.RenameTab, "Ctrl+Shift+R"); Add(HostCommand.SaveSession, "Ctrl+Shift+S");
             for (int i = 1; i <= 9; i++) Add((HostCommand)((int)HostCommand.Tab1 + i - 1), "Ctrl+" + i);
+            Add(HostCommand.LastTab, "Ctrl+0");
             return list;
+        }
+        // Older settings contain fewer bindings. Add new commands with their defaults instead
+        // of rejecting the whole file and disabling every shortcut.
+        public static void Upgrade(List<HostShortcut> list)
+        {
+            if (list == null) return;
+            foreach (var expected in Defaults())
+                if (!list.Any(b => b != null && b.Command == expected.Command)) list.Add(expected.Copy());
         }
         public static string Name(HostCommand c)
         {
@@ -39,7 +48,7 @@ namespace ExplorerTabs.Core
                 case HostCommand.NextTab: return "下一个标签"; case HostCommand.PreviousTab: return "上一个标签";
                 case HostCommand.NextPage: return "下一个标签（备用）"; case HostCommand.PreviousPage: return "上一个标签（备用）";
                 case HostCommand.Settings: return "设置…"; case HostCommand.RenameTab: return "重命名标签…";
-                case HostCommand.SaveSession: return "保存当前会话"; case HostCommand.Tab9: return "跳到最后一个标签";
+                case HostCommand.SaveSession: return "保存当前会话"; case HostCommand.LastTab: return "跳到最后一个标签";
                 default: return "跳到第 " + ((int)c - (int)HostCommand.Tab1 + 1) + " 个标签";
             }
         }

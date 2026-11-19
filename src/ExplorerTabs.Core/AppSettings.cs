@@ -46,6 +46,7 @@ namespace ExplorerTabs.Core
                 if (stream.Length > 32768) throw new InvalidDataException("设置文件过大，未读取或覆盖。");
                 var settings = (AppSettings?)new DataContractJsonSerializer(typeof(AppSettings)).ReadObject(stream);
                 if (settings == null) throw new InvalidDataException("设置文件为空。");
+                HostShortcutCatalog.Upgrade(settings.KeyBindings);
                 Validate(settings); return settings;
             }
         }

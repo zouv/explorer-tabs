@@ -6,6 +6,14 @@ using System.Threading.Tasks;
 
 namespace ExplorerTabs.Core
 {
+    /// <summary>A saved directory is no longer reachable. Retrying the same path cannot help
+    /// unless the volume appears later, so restore reports it and moves to the next tab.</summary>
+    public sealed class ExplorerDirectoryUnavailableException : InvalidOperationException
+    {
+        public string Directory { get; }
+        public ExplorerDirectoryUnavailableException(string directory)
+            : base("文件夹不存在或无法访问：" + directory) { Directory = directory; }
+    }
     public sealed class CreatedExplorer : IDisposable
     {
         public WindowIdentity Identity { get; }
@@ -103,7 +111,7 @@ namespace ExplorerTabs.Core
             token.ThrowIfCancellationRequested();
             string directory = FolderTarget.Normalize(source == null ? defaultDirectory : backend.ReadDirectory(source));
             token.ThrowIfCancellationRequested();
-            if (!FolderTarget.IsThisPc(directory) && !backend.DirectoryExists(directory)) throw new InvalidOperationException("文件夹不存在或无法访问：" + directory);
+            if (!FolderTarget.IsThisPc(directory) && !backend.DirectoryExists(directory)) throw new ExplorerDirectoryUnavailableException(directory);
             token.ThrowIfCancellationRequested();
             var excluded = new HashSet<long>(backend.CaptureExistingHandles().Concat(attachedHandles));
             token.ThrowIfCancellationRequested();

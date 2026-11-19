@@ -15,6 +15,7 @@ namespace ExplorerTabs.App
         private readonly WorkspaceLibrary library;
         private readonly ListView favorites = new ListView();
         private readonly ListView groups = new ListView();
+        private readonly ListView groupTabs = new ListView();
         private readonly Label status = new Label();
         private readonly ActionButton openFavorite = new ActionButton("打开为新标签", true) { Width = 118, Height = 30 };
         private readonly ActionButton renameFavorite = new ActionButton("重命名…") { Width = 92, Height = 30 };
@@ -22,6 +23,12 @@ namespace ExplorerTabs.App
         private readonly ActionButton openGroup = new ActionButton("追加打开", true) { Width = 112, Height = 30 };
         private readonly ActionButton renameGroup = new ActionButton("重命名…") { Width = 92, Height = 30 };
         private readonly ActionButton removeGroup = new ActionButton("删除标签组") { Width = 112, Height = 30 };
+        private readonly ActionButton addGroupTab = new ActionButton("添加目录…") { Width = 96, Height = 30 };
+        private readonly ActionButton editGroupTab = new ActionButton("编辑目录…") { Width = 92, Height = 30 };
+        private readonly ActionButton renameGroupTab = new ActionButton("重命名…") { Width = 80, Height = 30 };
+        private readonly ActionButton moveGroupTabUp = new ActionButton("上移") { Width = 56, Height = 30 };
+        private readonly ActionButton moveGroupTabDown = new ActionButton("下移") { Width = 56, Height = 30 };
+        private readonly ActionButton removeGroupTab = new ActionButton("移除") { Width = 56, Height = 30 };
         private readonly ActionButton save = new ActionButton("保存", true) { Width = 90, Height = 30 };
         private readonly ActionButton cancel = new ActionButton("取消") { DialogResult = DialogResult.Cancel, Width = 90, Height = 30 };
 
@@ -38,7 +45,7 @@ namespace ExplorerTabs.App
             Font = new Font("Microsoft YaHei UI", 9F);
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false; MaximizeBox = false; ShowInTaskbar = false;
-            ClientSize = new Size(820, 548);
+            ClientSize = new Size(940, 548);
             BackColor = Color.White;
 
             var pages = new TabControl { Dock = DockStyle.Fill };
@@ -56,7 +63,7 @@ namespace ExplorerTabs.App
             outer.Controls.Add(pages, 0, 0); outer.Controls.Add(status, 0, 1); outer.Controls.Add(buttons, 0, 2);
             Controls.Add(outer);
             AcceptButton = save; CancelButton = cancel;
-            RefreshFavorites(); RefreshGroups(); UpdateStatus();
+            RefreshFavorites(); RefreshGroups(); RefreshGroupTabs(); UpdateStatus();
             DialogStyle.Apply(this);
         }
 
@@ -88,22 +95,45 @@ namespace ExplorerTabs.App
         {
             var page = new TabPage("标签组") { Padding = new Padding(12, 10, 12, 10), BackColor = Color.White };
             ConfigureList(groups, "标签组");
-            groups.Columns.Add("名称", 320);
-            groups.Columns.Add("标签数", 140);
+            groups.Columns.Add("名称", 180);
+            groups.Columns.Add("标签数", 80);
             groups.DoubleClick += (_, __) => OpenSelectedGroup();
-            groups.SelectedIndexChanged += (_, __) => UpdateGroupButtons();
+            groups.SelectedIndexChanged += (_, __) => { UpdateGroupButtons(); RefreshGroupTabs(); };
             openGroup.Click += (_, __) => OpenSelectedGroup();
             renameGroup.Click += (_, __) => RenameSelectedGroup();
             removeGroup.Click += (_, __) => RemoveSelectedGroup();
-            var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, BackColor = Color.White };
-            actions.Controls.AddRange(new Control[] { openGroup, renameGroup, removeGroup });
+            ConfigureList(groupTabs, "标签组内容");
+            groupTabs.Columns.Add("别名", 130);
+            groupTabs.Columns.Add("目录", 392);
+            groupTabs.SelectedIndexChanged += (_, __) => UpdateGroupTabButtons();
+            groupTabs.DoubleClick += (_, __) => RenameSelectedGroupTab();
+            addGroupTab.Click += (_, __) => AddGroupTab();
+            editGroupTab.Click += (_, __) => ChangeSelectedGroupTabDirectory();
+            renameGroupTab.Click += (_, __) => RenameSelectedGroupTab();
+            moveGroupTabUp.Click += (_, __) => MoveSelectedGroupTab(-1);
+            moveGroupTabDown.Click += (_, __) => MoveSelectedGroupTab(1);
+            removeGroupTab.Click += (_, __) => RemoveSelectedGroupTab();
+            var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, BackColor = Color.White };
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 330));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            body.Controls.Add(SplitPane(groups, new Control[] { openGroup, renameGroup, removeGroup }), 0, 0);
+            body.Controls.Add(SplitPane(groupTabs, new Control[] { addGroupTab, editGroupTab, renameGroupTab, moveGroupTabUp, moveGroupTabDown, removeGroupTab }), 1, 0);
             var note = new Label
             {
                 Dock = DockStyle.Top, Height = 26, ForeColor = Color.FromArgb(91, 104, 123),
-                Text = "双击条目或点击“追加打开”会追加为多个标签；删除不会关闭任何窗口。"
+                Text = "左侧选择标签组；右侧可添加 / 编辑目录、重命名别名、上移 / 下移或移除组内标签。双击组名追加打开。"
             };
-            page.Controls.Add(groups); page.Controls.Add(actions); page.Controls.Add(note);
+            page.Controls.Add(body); page.Controls.Add(note);
             return page;
+        }
+
+        private static Panel SplitPane(Control list, Control[] actions)
+        {
+            var row = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, BackColor = Color.White };
+            row.Controls.AddRange(actions);
+            var pane = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
+            pane.Controls.Add(list); pane.Controls.Add(row);
+            return pane;
         }
 
         private static void ConfigureList(ListView list, string accessibleName)
@@ -119,6 +149,9 @@ namespace ExplorerTabs.App
 
         private SavedWorkspace? SelectedGroup() =>
             groups.SelectedItems.Count == 0 ? null : groups.SelectedItems[0].Tag as SavedWorkspace;
+
+        private WorkspaceTab? SelectedGroupTab() =>
+            groupTabs.SelectedItems.Count == 0 ? null : groupTabs.SelectedItems[0].Tag as WorkspaceTab;
 
         private void RefreshFavorites(string? selectId = null)
         {
@@ -166,6 +199,42 @@ namespace ExplorerTabs.App
         {
             bool selected = SelectedGroup() != null;
             openGroup.Enabled = renameGroup.Enabled = removeGroup.Enabled = selected;
+        }
+
+        private void RefreshGroupTabs(WorkspaceTab? select = null)
+        {
+            var group = SelectedGroup();
+            groupTabs.BeginUpdate();
+            try
+            {
+                groupTabs.Items.Clear();
+                if (group != null)
+                    for (int i = 0; i < group.Tabs.Count; i++)
+                    {
+                        var tab = group.Tabs[i];
+                        var item = new ListViewItem(string.IsNullOrEmpty(tab.Alias) ? "（无别名）" : tab.Alias)
+                        { Tag = tab, ToolTipText = FolderTarget.Display(tab.Directory) };
+                        item.SubItems.Add(FolderTarget.Display(tab.Directory));
+                        if (i == group.ActiveIndex) item.ForeColor = Color.FromArgb(31, 86, 183);
+                        groupTabs.Items.Add(item);
+                        if (ReferenceEquals(tab, select)) item.Selected = true;
+                    }
+            }
+            finally { groupTabs.EndUpdate(); }
+            UpdateGroupTabButtons();
+        }
+
+        private void UpdateGroupTabButtons()
+        {
+            var group = SelectedGroup();
+            var tab = SelectedGroupTab();
+            int index = group != null && tab != null ? group.Tabs.IndexOf(tab) : -1;
+            bool selected = index >= 0;
+            editGroupTab.Enabled = renameGroupTab.Enabled = selected;
+            moveGroupTabUp.Enabled = selected && index > 0;
+            moveGroupTabDown.Enabled = selected && index < group!.Tabs.Count - 1;
+            removeGroupTab.Enabled = selected && group!.Tabs.Count > 1;
+            addGroupTab.Enabled = group != null && group.Tabs.Count < 100;
         }
 
         private void UpdateStatus() =>
@@ -239,6 +308,77 @@ namespace ExplorerTabs.App
             var group = SelectedGroup();
             if (group == null) return;
             library.Groups.Remove(group); MarkDirty(); RefreshGroups();
+        }
+
+        private string? PickDirectory(string description)
+        {
+            using (var picker = new FolderBrowserDialog { Description = description, ShowNewFolderButton = false })
+            {
+                if (picker.ShowDialog(this) != DialogResult.OK) return null;
+                try { return FolderTarget.Normalize(picker.SelectedPath); }
+                catch (Exception error) when (error is ArgumentException || error is NotSupportedException || error is PathTooLongException)
+                { status.Text = error.Message; return null; }
+            }
+        }
+
+        private void AddGroupTab()
+        {
+            var group = SelectedGroup();
+            if (group == null) return;
+            if (group.Tabs.Count >= 100) { status.Text = "每个标签组最多 100 个标签。"; return; }
+            string? path = PickDirectory("选择要加入标签组的目录");
+            if (path == null) return;
+            if (group.Tabs.Any(t => FolderTarget.Same(t.Directory, path))) { status.Text = "该目录已在标签组中。"; return; }
+            string? alias = AskName("标签别名", SuggestedName(path));
+            if (alias == null) return;
+            var added = new WorkspaceTab { Directory = path, Alias = alias };
+            group.Tabs.Add(added); MarkDirty(); RefreshGroups(group.Id); RefreshGroupTabs(added);
+        }
+
+        private void ChangeSelectedGroupTabDirectory()
+        {
+            var group = SelectedGroup();
+            var tab = SelectedGroupTab();
+            if (group == null || tab == null) return;
+            string? path = PickDirectory("选择标签组条目的目录");
+            if (path == null) return;
+            if (group.Tabs.Any(t => !ReferenceEquals(t, tab) && FolderTarget.Same(t.Directory, path))) { status.Text = "该目录已在标签组中。"; return; }
+            tab.Directory = path; MarkDirty(); RefreshGroupTabs(tab);
+        }
+
+        private void RenameSelectedGroupTab()
+        {
+            var tab = SelectedGroupTab();
+            if (tab == null) return;
+            string? alias = AskName("编辑标签别名", tab.Alias ?? SuggestedName(tab.Directory));
+            if (alias == null) return;
+            tab.Alias = alias; MarkDirty(); RefreshGroupTabs(tab);
+        }
+
+        private void MoveSelectedGroupTab(int delta)
+        {
+            var group = SelectedGroup();
+            var tab = SelectedGroupTab();
+            if (group == null || tab == null) return;
+            int index = group.Tabs.IndexOf(tab), target = index + delta;
+            if (index < 0 || target < 0 || target >= group.Tabs.Count) return;
+            group.Tabs[index] = group.Tabs[target]; group.Tabs[target] = tab;
+            if (group.ActiveIndex == index) group.ActiveIndex = target;
+            else if (group.ActiveIndex == target) group.ActiveIndex = index;
+            MarkDirty(); RefreshGroupTabs(tab);
+        }
+
+        private void RemoveSelectedGroupTab()
+        {
+            var group = SelectedGroup();
+            var tab = SelectedGroupTab();
+            if (group == null || tab == null) return;
+            if (group.Tabs.Count <= 1) { status.Text = "标签组至少保留 1 个标签。"; return; }
+            int index = group.Tabs.IndexOf(tab);
+            group.Tabs.RemoveAt(index);
+            if (group.ActiveIndex > index) group.ActiveIndex--;
+            else if (group.ActiveIndex == index) group.ActiveIndex = Math.Min(index, group.Tabs.Count - 1);
+            MarkDirty(); RefreshGroups(group.Id); RefreshGroupTabs();
         }
 
         private string? AskName(string title, string value)

@@ -94,46 +94,121 @@ namespace ExplorerTabs.App
             }
             finally { workspaceOperation = null; operation.Dispose(); if (!IsDisposed && !closing) SetCreationControls(creation != null); }
         }
+        // Tests shorten this to keep retry paths bounded; production uses the policy backoff.
+        internal Func<int, TimeSpan> RestoreRetryDelay { get; set; } = WorkspaceRestorePolicy.RetryDelay;
         private async Task OpenWorkspaceAsync(SavedWorkspace saved)
         {
             if (closing || exitPreparing || creation != null || workspaceOperation != null || explorerTabs.IsBusy) return;
             WorkspaceLibrary.Validate(new WorkspaceLibrary { LastSession = saved });
             if (saved.Tabs.Count + controller.Sessions.Count > 100) throw new InvalidOperationException("标签总数将超过 100，请先关闭或分离部分标签。");
             var operation = new CancellationTokenSource(); workspaceOperation = operation; SetCreationControls(false);
-            sessionOffer.Visible = false; var failures = new List<string>(); WindowSession? first = null, desired = null;
+            sessionOffer.Visible = false; sessionOfferDismissed = true;
+            var failures = new List<string>(); WindowSession? first = null, desired = null;
+            int restored = 0; bool stopped = false;
             try
             {
+                BeginRestoreBanner(saved);
+                status.Text = $"正在恢复「{saved.Name}」；可随时停止，已打开的标签会保留。";
+                log.Write($"Workspace restore started; session={saved.Name}; tabs={saved.Tabs.Count}");
                 for (int i = 0; i < saved.Tabs.Count; i++)
                 {
-                    operation.Token.ThrowIfCancellationRequested(); status.Text = $"正在打开 {saved.Name}：{i + 1} / {saved.Tabs.Count} · 可取消";
-                    try
+                    var entry = saved.Tabs[i]; int attempt = 0;
+                    while (true)
                     {
-                        var entry = saved.Tabs[i]; CreatedExplorer? result = null;
+                        operation.Token.ThrowIfCancellationRequested();
+                        ShowRestoreProgress(saved, i, attempt);
                         try
                         {
-                            using (var item = CancellationTokenSource.CreateLinkedTokenSource(operation.Token))
-                            {
-                                item.CancelAfter(15000);
-                                result = await explorerTabs.CreateAsync(entry.Directory, null, controller.Sessions.Select(s => s.Identity.Handle).ToArray(), item.Token);
-                                while (modalDepth > 0 || tabs.IsInteracting) await Task.Delay(50, item.Token); item.Token.ThrowIfCancellationRequested();
-                            }
-                            operation.Token.ThrowIfCancellationRequested(); if (closing || IsDisposed || exitPreparing) return;
-                            AttachCreated(result, SelectedMode); var session = controller.Active!;
-                            if (entry.Alias != null) controller.RenameTab(session, entry.Alias);
-                            if (first == null) first = session; if (i == saved.ActiveIndex) desired = session;
+                            await WaitForShellIdleAsync(saved, i, operation.Token);
+                            var session = await CreateRestoredTabAsync(entry, operation.Token);
+                            if (session == null) { stopped = true; break; }
+                            restored++;
+                            if (first == null) first = session;
+                            if (i == saved.ActiveIndex) desired = session;
+                            break;
                         }
-                        finally { result?.Dispose(); }
+                        catch (Exception error) when (!(error is OperationCanceledException && operation.IsCancellationRequested))
+                        {
+                            attempt++;
+                            if (!WorkspaceRestorePolicy.IsRetryable(error))
+                            {
+                                string reason = entry.Directory + "：" + WorkspaceRestorePolicy.Describe(error);
+                                failures.Add(reason);
+                                log.Write("Workspace restore item failed; " + reason);
+                                break;
+                            }
+                            var delay = RestoreRetryDelay(attempt);
+                            var cause = (error as ExplorerCreationTransientException)?.InnerException ?? error;
+                            log.Write($"Workspace restore waiting; directory={entry.Directory}; attempt={attempt}; delayMs={delay.TotalMilliseconds:F0}; {cause.GetType().Name} HRESULT=0x{cause.HResult:X8}; {cause.Message}");
+                            ShowRestoreWaiting(saved, i, attempt, error, delay);
+                            await Task.Delay(delay, operation.Token);
+                        }
                     }
-                    catch (Exception error) when (!(error is OperationCanceledException && operation.IsCancellationRequested)) { failures.Add(saved.Tabs[i].Directory + ": " + error.Message); }
-                    for (int wait = 0; explorerTabs.IsBusy && wait < 20; wait++) await Task.Delay(25, operation.Token);
-                    if (explorerTabs.IsBusy) { failures.Add("Shell 调用尚未退出，剩余目录未创建，请稍后重试。"); break; }
+                    if (stopped) break;
                 }
-                if (desired != null || first != null) SelectTab(desired ?? first!);
-                RefreshTabs(); status.Text = $"{saved.Name} 已打开；失败 / 跳过 {failures.Count} 项。";
-                if (failures.Count > 0) { log.Write("Workspace restore partial: " + string.Join(" | ", failures)); using (EnterModal()) MessageBox.Show(this, string.Join("\n", failures), "部分目录未打开（成功标签保留）", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                if (!IsDisposed && !closing)
+                {
+                    if (desired != null || first != null) SelectTab(desired ?? first!);
+                    RefreshTabs(); CompleteRestoreBanner(restored, saved.Tabs.Count, failures, stopped);
+                    status.Text = stopped
+                        ? $"已停止恢复：已打开 {restored} / {saved.Tabs.Count} 个标签；其余可手动新建。"
+                        : failures.Count == 0
+                            ? $"恢复完成：已打开 {restored} 个标签。"
+                            : $"恢复完成：已打开 {restored} 个；{failures.Count} 个未打开（详见提示条与日志）。";
+                }
+                log.Write($"Workspace restore finished; session={saved.Name}; restored={restored}; failed={failures.Count}; stopped={stopped}");
             }
-            catch (OperationCanceledException) { if (!IsDisposed) status.Text = "打开已取消，已完成的标签保留；迟到窗口不接管。"; }
-            finally { workspaceOperation = null; operation.Dispose(); if (!IsDisposed && !closing) SetCreationControls(creation != null); }
+            catch (OperationCanceledException)
+            {
+                stopped = true;
+                if (!IsDisposed && !closing)
+                {
+                    CompleteRestoreBanner(restored, saved.Tabs.Count, failures, true);
+                    status.Text = $"已停止恢复：已打开 {restored} / {saved.Tabs.Count} 个标签；其余可手动新建。";
+                }
+                log.Write($"Workspace restore stopped by user; restored={restored}; failed={failures.Count}");
+            }
+            finally
+            {
+                AbandonRestoreBanner();
+                workspaceOperation = null; operation.Dispose(); if (!IsDisposed && !closing) SetCreationControls(creation != null);
+            }
+        }
+        private async Task<WindowSession?> CreateRestoredTabAsync(WorkspaceTab entry, CancellationToken operationToken)
+        {
+            CreatedExplorer? result = null;
+            try
+            {
+                using (var item = CancellationTokenSource.CreateLinkedTokenSource(operationToken))
+                {
+                    item.CancelAfter(15000);
+                    try
+                    {
+                        result = await explorerTabs.CreateAsync(entry.Directory, null, controller.Sessions.Select(s => s.Identity.Handle).ToArray(), item.Token);
+                    }
+                    catch (Exception error) when (!(error is OperationCanceledException && operationToken.IsCancellationRequested) &&
+                                                   !(error is ExplorerDirectoryUnavailableException))
+                    {
+                        // Any failure while asking the Shell for a window is retryable: the
+                        // LocalServer may still be starting even when the error is generic.
+                        throw new ExplorerCreationTransientException(error);
+                    }
+                    while (modalDepth > 0 || tabs.IsInteracting) await Task.Delay(50, item.Token); item.Token.ThrowIfCancellationRequested();
+                }
+                operationToken.ThrowIfCancellationRequested(); if (closing || IsDisposed || exitPreparing) return null;
+                AttachCreated(result, SelectedMode); var session = controller.Active!;
+                if (entry.Alias != null) controller.RenameTab(session, entry.Alias);
+                return session;
+            }
+            finally { result?.Dispose(); }
+        }
+        // A stalled COM activation keeps the single-flight gate held until its worker returns.
+        // Wait visibly instead of reporting an "already running" failure, so the batch can resume.
+        private async Task WaitForShellIdleAsync(SavedWorkspace saved, int index, CancellationToken token)
+        {
+            if (!explorerTabs.IsBusy) return;
+            log.Write("Workspace restore waiting for the previous Shell call to exit; no concurrent creation.");
+            while (explorerTabs.IsBusy) { ShowRestoreBusy(saved, index); await Task.Delay(100, token); }
         }
         private void MaybeAutosave()
         {
