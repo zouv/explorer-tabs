@@ -1,23 +1,25 @@
 # 会话接力 · ExplorerTabs
 
-状态日期：2026-11-19；无进行中任务。0.14.0 已发布：恢复等待 / 重试与状态横幅、菜单外部点击关闭、Ctrl+9·Ctrl+0、标签组内容编辑。真实鼠标、快捷键与重启恢复场景待用户复验。当前正式版本 0.14.0；不自动启动真实交互宿主或操作用户 Explorer。
+状态日期：2026-11-19；无进行中任务。0.14.0 已发布；未发布改动：恢复状态提示移入内容区、修复最小化后回前台窗口每次增高。待用户实机复验。当前正式版本 0.14.0；不自动启动真实交互宿主或操作用户 Explorer。
 
 源码根 D:/Git/zgithub/explorer-tabs；分支 main；origin https://github.com/zouv/explorer-tabs；正式入口 `dist/release/unpack/ExplorerTabs.exe`（0.14.0）；Release https://github.com/zouv/explorer-tabs/releases/tag/v0.14.0（标签 `v0.14.0` 指向 bdc7f92，上一正式版 v0.13.0 历史保留）。
 
-最后验证：2026-11-19 发布前完整 `build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1181 项安全断言（核心 551、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 444、隔离打包 25），零警告 / 零错误；`sh manager.sh package` 产出 dev / release zip 并通过包内版本与 zip 全项校验；三个 Release 附件的远端 digest 与下载后 SHA-256 均匹配。未启动真实交互宿主，真实鼠标菜单关闭 / 快捷键 / 重启恢复场景待用户复验。
+最后验证：2026-11-19 恢复状态移入内容区 + 窗口恢复尺寸校正后完整 `build.ps1 -NativeSmoke -CrossProcessSmoke -TabUiSmoke -CreationUiSmoke -WorkspaceUiSmoke` 通过 1182 项安全断言（核心 551、原生 63、跨进程 17、标签 UI 38、创建 UI 43、工作区 445、隔离打包 25），零警告 / 零错误；自建窗口探针复现「最小化→恢复每次 +7px（96 DPI）」，并验证应用内直接 SetWindowPos 校正后稳定为记录尺寸。0.14.0 打包与三个 Release 附件远端 digest / 下载 SHA-256 已核验。未启动真实交互宿主，真实鼠标 / 快捷键 / 最小化恢复场景待用户复验。
 
 ## 待用户反馈（直接在对话询问，不写人工回归文档）
+- 2026-11-19 窗口尺寸（未发布）：反复用最小化按钮 / 全局快捷键最小化再回到前台，窗口高度应保持不变，不再逐次变长；任务栏最小化恢复同样应稳定。
 - 2026-11-19 三项交互（0.14.0）：① 会话 / 工具栏菜单打开后点击 Explorer 内容区域应自动关闭菜单，且该点击仍正常作用于 Explorer；② Ctrl+9 应跳到第 9 个标签、Ctrl+0 跳到最后一个；③ “管理收藏与标签组 → 标签组”可添加 / 编辑目录、改别名、上移下移与移除组内标签，保存后追加打开应反映新顺序。
-- 2026-11-19 恢复体验（0.14.0）：异常重启后点“重新打开上次会话”，应看到顶部恢复横幅（当前目录 / 总数）；Shell 未就绪时显示“Shell 尚未就绪（HRESULT 0x……）”并自动按 1 / 2 / 3 / 5 秒重试，可点“停止恢复”转为手动新建；恢复结束保留结果摘要与未打开原因。
+- 2026-11-19 恢复体验（0.14.0 + 未发布调整）：异常重启后点“重新打开上次会话”，状态应显示在内容区等待页（类似新建窗口）：当前目录 / 总数、Shell 未就绪原因与重试次数；可点“停止恢复”转为手动新建；停止 / 存在未打开目录时内容区保留结果页，点“关闭”返回标签。
 - 2026-11-13 本轮 7 项：① 标签右键菜单出现“在右侧新建”，应在该标签右侧打开设置默认目录的新标签且不复制目录；② 关闭活动标签应立即切到左邻（无左邻切右邻），不再等待 Explorer 关闭确认；③ “关闭标签”为普通文字色；④ 菜单备注（快捷键、“追加”等）在右侧列对齐；⑤ 收藏菜单标签组项显示“追加「名称（N标签）」”并直接追加，保存标签组默认名为“我的标签组”；⑥ 应用内弹窗打开且切到后台时，按全局快捷键应把主窗口和弹窗带回前台；⑦ 工具栏空白 / 分隔线按住可拖动窗口，标签栏被占满时也能拖动。
 - 2026-11-11 0.12.0 四项仍待实机复验：退出并保留窗口后重开不再提示旧会话；“加入全部窗口”；`+` / Ctrl+T 等待页与失败恢复；托管 Explorer 内 F2 重命名 Ctrl+A 全选。
 - 更早版本的菜单 / 弹窗 / DPI / 托盘 / 打包确认等观感项若仍有问题，直接在对话反馈，不新增人工回归文档。
 
 ## 本轮关键改动位置
+- 最小化恢复增高：`MainForm.Resize` → `TrackWindowStateForRestore` → `ApplyNormalPlacementAfterRestore`（直接 SetWindowPos 到 `WindowPlacementTracker.NormalBounds`）；`CaptureWindowPlacement` 在校正期间跳过瞬态尺寸。
 - 菜单外部点击关闭：`MenuDismissMonitor`（WH_MOUSE_LL，仅可见菜单注册）→ `MainForm.RegisterMenuLifetime` 的 Opened/Closed/Disposed；关闭入口 `MainForm.DismissMenusOutside`（菜单 / 子菜单矩形外 `Close(AppClicked)`，不吞点击）。
 - 快捷键：`HostCommand.LastTab`、`HostShortcutCatalog.Defaults / Name / Upgrade`、`AppSettingsStore.Read` 旧配置补齐、`MainForm.ExecuteCommandAsync` 的 Ctrl+9 / Ctrl+0 映射。
 - 标签组内容编辑：`LibraryManagerDialog` 的 `BuildGroupsPage / RefreshGroupTabs / UpdateGroupTabButtons / AddGroupTab / ChangeSelectedGroupTabDirectory / RenameSelectedGroupTab / MoveSelectedGroupTab / RemoveSelectedGroupTab`，维护 1–100 与 ActiveIndex。
-- 恢复等待 / 重试：`MainForm.OpenWorkspaceAsync` → `CreateRestoredTabAsync` / `WaitForShellIdleAsync`；分类与退避 `WorkspaceRestorePolicy.IsRetryable / RetryDelay / Describe`；目录不可用 `ExplorerDirectoryUnavailableException`。
+- 恢复等待 / 重试：`MainForm.OpenWorkspaceAsync` → `CreateRestoredTabAsync` / `WaitForShellIdleAsync`；分类与退避 `WorkspaceRestorePolicy.IsRetryable / RetryDelay / Describe`；目录不可用 `ExplorerDirectoryUnavailableException`；状态与停在内容区 `PendingCreationPanel`（`BeginRestoreView / ShowRestoreProgress / ShowRestoreWaiting / ShowRestoreBusy / ShowRestoreResult / StopWorkspaceRestore`），停止 / 未打开保留结果页与关闭按钮。
 - 恢复横幅：`MainForm.WorkspaceUi.BeginRestoreBanner / ShowRestoreProgress / ShowRestoreWaiting / ShowRestoreBusy / CompleteRestoreBanner / StopWorkspaceRestore`；`restoringWorkspace` 保护 `ShowSessionOffer`，停止与工具栏取消共用 `workspaceOperation`。
 - 测试：`WorkspaceTests` 策略分类；`WorkspaceUiTests.RestoreRetryUiTests`（瞬时失败重试、等待期间停止、永久失败继续）；`WorkspaceService.CreateFailures` fake 注入、`RestoreRetryDelay` 测试注入。
 - 标签右键“在右侧新建”：`MainForm.PopulateTabMenu` → `QueueCreateAtRightFromMenu` → `CreateTabAtRightAsync` / `CreateTabCoreAsync(source, insertAfter)`；`AttachCreatedCore` 只按锚点插入，默认目录来自设置，不复制来源。

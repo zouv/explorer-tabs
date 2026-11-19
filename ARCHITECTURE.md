@@ -30,10 +30,10 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | tests/ExplorerTabs.Tests/BrandingTests.cs、Fixtures/v0.6.1/ | 旧程序集生成的合成 JSON，字节级重序列化、改名元数据 / 资源与独立测试用户互斥 |
 | src/ExplorerTabs.App/Program.cs | 单实例 / DPI / 事故恢复，独立读取 settings.json 与 workspace.json；坏库禁用持久化 |
 | src/ExplorerTabs.App/MainForm.Chrome.cs | 无独立标题栏、原生 thick frame（薄 DWM 边框 + 不可见缩放边距）、顶部边框并入客户区并用同色带上报缩放 / 最大化工作区、标签栏 / 工具栏空白拖动、窗口按钮、托管应用菜单与图标资源 |
-| src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色、SidebarButton / ThemedCheckBox / FieldHost / PresetButton、DialogStyle / DialogTitleBar 无边框弹窗、同一 GraphicsPath 生成的外 / 内圆角、实色 1px 边框环、欢迎页 ResizeRedraw、PendingCreationPanel 等待转圈；不依赖 SVG 运行库 |
+| src/ExplorerTabs.App/ModernControls.cs | GDI+ 矢量图标、图标 / 文字按钮、菜单配色、SidebarButton / ThemedCheckBox / FieldHost / PresetButton、DialogStyle / DialogTitleBar 无边框弹窗、同一 GraphicsPath 生成的外 / 内圆角、实色 1px 边框环、欢迎页 ResizeRedraw、PendingCreationPanel 等待转圈（可选停止 / 结果按钮、两行提示）；不依赖 SVG 运行库 |
 | src/ExplorerTabs.App/AboutDialog.cs | 应用介绍：嵌入图标、程序集版本、作者 @zouv、简短说明与关闭按钮；沿用 ShellDialog 边框 / 圆角 |
 | src/ExplorerTabs.App/MainForm.cs | 接管、激活、分离、创建、轮询、模态范围与 UI 状态同步；新建立即显示等待页并在失败 / 取消时恢复原活动窗口；在右侧新建只按锚点插入、使用默认目录而不复制来源；退出并保留窗口成功后清除已保存会话 |
-| src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏 / 加入 / 分离 / 收藏 / 会话菜单、共享能力判断 / 退出项 / 动态标题；“加入全部窗口”批量加入、快照直接打开、管理入口；菜单所有权 / 延后释放模态 scope、失效原窗口 / 显式重开会话自适应横条与 QueueUi；恢复进度 / 等待重试 / 停止 / 结果横幅 |
+| src/ExplorerTabs.App/MainForm.WorkspaceUi.cs | 工具栏 / 加入 / 分离 / 收藏 / 会话菜单、共享能力判断 / 退出项 / 动态标题；“加入全部窗口”批量加入、快照直接打开、管理入口；菜单所有权 / 延后释放模态 scope、失效原窗口 / 显式重开会话自适应横条与 QueueUi；恢复进度 / 等待重试 / 停止 / 结果在内容区等待页 |
 | src/ExplorerTabs.App/LibraryManagerDialog.cs | “管理收藏与标签组”：收藏目录 / 标签组两页；左选标签组、右侧维护组内标签（添加目录、编辑目录、重命名别名、上移 / 下移 / 移除）并保持 1–100 与 ActiveIndex 合法；修改留在私有副本，保存或打开时由宿主统一校验持久化，取消丢弃 |
 | src/ExplorerTabs.App/MenuDismissMonitor.cs | 托管菜单打开期间安装 WH_MOUSE_LL 只读取点击坐标；点击菜单 / 子菜单外（含嵌入 Explorer）关闭菜单，不吞事件；非可见 probe 菜单不安装，失败降级为标准关闭 |
 | src/ExplorerTabs.App/MainForm.WorkspacePersistence.cs | 按标签数预算的有界串行目录捕获、完整会话保存、串行显式恢复（Shell 未就绪时可见等待与退避重试、可停止）、自动保存静默、退出独立 30 秒上限 |
@@ -52,7 +52,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | src/ExplorerTabs.Core/HostShortcuts.cs | 23 操作（Tab1–9 = Ctrl+1–9、LastTab = Ctrl+0）、默认与候选组合、旧配置补命令、重复验证、物理 down/up / 注入 / repeat 策略 |
 | src/ExplorerTabs.Core/WindowClosing.cs | identity 校验后 PostMessage(WM_CLOSE)，不 detach / Quit / kill |
 | src/ExplorerTabs.Core/FolderTarget.cs、AppSettings.cs | 普通目录 / “此电脑”token 验证；设置默认值兼容、GlobalHotkey / HideToTrayOnGlobalHotkey 可选字段、深复制与原子写盘 |
-| src/ExplorerTabs.App/MainForm.WindowPreferences.cs、src/ExplorerTabs.Core/WindowPlacementTracker.cs | 首次 OnLoad 缩放后恢复物理 Bounds；记住最后普通矩形 / 非最小化状态；最小化不写图标坐标，呼出保留最大化 |
+| src/ExplorerTabs.App/MainForm.WindowPreferences.cs、src/ExplorerTabs.Core/WindowPlacementTracker.cs | 首次 OnLoad 缩放后恢复物理 Bounds；记住最后普通矩形 / 非最小化状态；最小化不写图标坐标，呼出保留最大化；自定义顶框导致 WinForms 恢复每次增高时，按记录的普通矩形用 SetWindowPos 校正且不把瞬态尺寸写回快照 |
 | src/ExplorerTabs.Core/GlobalHotkeyPolicy.cs、tests/ExplorerTabs.Tests/WindowPreferencesTests.cs | 热键显隐 / 前台 / 托盘纯决策；偏好 JSON 兼容、布局捕获、隐藏窗口关闭 / 重开与设置 DPI 可达性回归 |
 | src/ExplorerTabs.Core/GlobalHotkey.cs | 全局快捷键字符串解析 / 规范化 / 校验 / 与宿主快捷键冲突检测；A–Z、0–9、F1–F12 + Ctrl/Alt/Shift |
 | src/ExplorerTabs.Core/NativeWindowApi.cs、TaskbarService.cs、RestorePresentation.cs、RecoveryJournal.cs | Win32 / Shell 操作、DPI 兼容白名单、恢复结构 / 显示顺序、只读呈现采样、事故日志 |
@@ -94,7 +94,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | FolderTarget.ThisPc / Normalize / IsThisPc / Display | `shell:MyComputerFolder` 与 CLSID 规范化为 token；其它 shell 虚拟目录仍拒绝；Display 返回“此电脑”；Same 对 token 生效 |
 | GlobalHotkeyDefinition.Normalize / TryParse / Conflicts | 仅 Ctrl/Alt/Shift + A–Z/0–9/F1–F12，至少一个修饰键；空值=停用；非法格式抛 ArgumentException；与宿主快捷键重复时拒绝 |
 | EmbeddedInputPolicy.IsSelectAll / IsEditClass | 仅物理 Ctrl+A key-down、非注入、精确 Ctrl 修饰且活动宿主可用；类名包含 Edit / RichEdit 才补发 EM_SETSEL；不改变快捷键策略与原始按键消费 |
-| GlobalHotkeyPolicy.Decide / WindowPlacementTracker.Capture | 前者纯决策 ShowHost / MinimizeHost / HideToTray；模态弹窗打开时仍允许 ShowHost（宿主在后台）并激活宿主拥有的弹窗，但不最小化 / 隐藏：宿主最小化会隐藏 owned 弹窗并使 WinForms 提前结束 ShowDialog（实测 DialogResult=Cancel），仅隐藏宿主则弹窗留在桌面；后者最小化时完全保留上次布局，最大化只改状态，普通状态只收有效非微型矩形 |
+| GlobalHotkeyPolicy.Decide / WindowPlacementTracker.Capture | 前者纯决策 ShowHost / MinimizeHost / HideToTray；模态弹窗打开时仍允许 ShowHost（宿主在后台）并激活宿主拥有的弹窗，但不最小化 / 隐藏：宿主最小化会隐藏 owned 弹窗并使 WinForms 提前结束 ShowDialog（实测 DialogResult=Cancel），仅隐藏宿主则弹窗留在桌面；后者最小化时完全保留上次布局，最大化只改状态，普通状态只收有效非微型矩形；`tracked normal bounds` 以外部矩形为准，排除瞬态恢复尺寸 |
 | GlobalHotkeyRegistration.Apply / Probe / Unregister | RegisterHotKey 绑定 HWND（MOD_NOREPEAT）；失败回滚旧组合；Probe 用独立 ID 试探占用；Dispose / HandleDestroyed 注销 |
 | IExplorerCreationBackend.IsAt / ShellViewReference.CurrentFolderIs | 虚拟目标创建后用当前视图 PIDL 与目标 PIDL 的 `ILIsEqual` 精确匹配；文件系统目标继续用 LocationURL 比对 |
 | HostShortcutPolicy.Handle | 物理 down/up 配对，repeat 不重触发，注入不消费；scope / create / switch / active 权限限制 |
@@ -119,7 +119,7 @@ C# / WinForms / net48 / x64，无第三方 NuGet。每个标签对应常驻真�
 | MainForm.ConfigureStartupRecovery / ShowSessionOffer | 仅本次成功静默清理的失效数量；不写 JSON；与 LastSession 目录数分开展示，单一可换行横条；点击前零创建，点击快照复制后排队再验能力，暂不打开不删库且本次不再邀请 |
 | WorkspaceRestorePolicy.IsRetryable / RetryDelay / Describe | 创建阶段异常由 `ExplorerCreationTransientException` 标记为可重试；未包装的 Shell 激活类 COM HRESULT（E_FAIL、CO_E_SERVER_EXEC_FAILURE、REGDB_E_CLASSNOTREG、RPC_E_*、RPC_S_* 等）与单项 15 秒超时也可重试；目录不可用、身份变化不重试；延迟 1/2/3/5 秒封顶；描述区分“Shell 尚未就绪”“Shell 调用失败”“文件夹不存在或无法访问” |
 | ExplorerDirectoryUnavailableException | 创建前目录校验失败专用，继承 InvalidOperationException 并携带 Directory；恢复策略不重试，调用方逐项报告后继续 |
-| MainForm.OpenWorkspaceAsync / RestoreRetryDelay | 恢复期间 `restoringWorkspace` 独占横幅与 `workspaceOperation`；`RestoreRetryDelay` 仅供测试注入短退避；停止按钮与工具栏取消共用同一 CancellationTokenSource；等待 Shell 单飞 gate 释放时不并发创建 |
+| MainForm.OpenWorkspaceAsync / RestoreRetryDelay | 恢复期间 `restoringWorkspace` 独占内容区等待页与 `workspaceOperation`；`RestoreRetryDelay` 仅供测试注入短退避；停止按钮（等待页）与工具栏取消共用同一 CancellationTokenSource；停止 / 未打开时保留内容区结果页与关闭按钮；等待 Shell 单飞 gate 释放时不并发创建 |
 | RecoveryJournal.TryClearAllMissing | 死 owner + 全部完整身份不匹配才原子写保留 owner 的空副本；不修改输入，不 Restore / Recover；未知 / 存活回人工，写失败阻止启动 |
 | RecoveryJournal / AppSettingsStore / WorkspaceLibraryStore | 原子写；破坏性窗口操作前日志先行；坏原文件保留并禁用本次持久化 |
 

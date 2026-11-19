@@ -145,15 +145,16 @@ namespace ExplorerTabs.Tests
             {
                 MainType.GetProperty("RestoreRetryDelay", PrivateInstance)!.SetValue(form, new Func<int, TimeSpan>(_ => TimeSpan.FromMilliseconds(10)));
                 var pending = WorkspaceTask(form, "OpenWorkspaceAsync", saved);
-                Check(UiField<FlowLayoutPanel>(form, "restoreBanner").Visible && UiField<FlowLayoutPanel>(form, "restoreBanner").Height > 0,
-                    "restore shows a laid-out progress banner immediately instead of staying silent");
+                var pendingView = UiField<Control>(form, "pendingView");
+                Check(pendingView.Visible && UiField<string>(pendingView, "title").Contains("恢复"),
+                    "restore immediately shows the content waiting surface instead of staying silent");
                 Check(PumpUntil(() => retryService.Creates >= 3, 2000),
                     "transient Shell activation failures are retried without user action");
                 PumpTask(pending);
                 Check(retryHost.Sessions.Count == saved.Tabs.Count && retryService.Creates == saved.Tabs.Count + 2,
                     "retry resumes the batch and restores every saved tab");
-                Check(UiField<Label>(form, "restoreBannerText").Text.Contains("恢复完成") && UiField<Button>(form, "restoreClose").Visible,
-                    "completed restore leaves a visible result instead of a modal failure");
+                Check(!pendingView.Visible,
+                    "successful restore closes the waiting surface and shows the restored tabs");
             }
             var stopHost = new HostController(new FakeWindows(), new FakeStore()); var stopService = new WorkspaceService();
             stopService.CreateFailures.Enqueue(new COMException("未指定的错误", unchecked((int)0x80004005)));
@@ -161,15 +162,19 @@ namespace ExplorerTabs.Tests
             {
                 MainType.GetProperty("RestoreRetryDelay", PrivateInstance)!.SetValue(form, new Func<int, TimeSpan>(_ => TimeSpan.FromSeconds(30)));
                 var pending = WorkspaceTask(form, "OpenWorkspaceAsync", SampleWorkspace());
-                Check(PumpUntil(() => UiField<Label>(form, "restoreBannerText").Text.Contains("尚未就绪"), 1000),
-                    "waiting banner shows the Shell failure reason and the retry");
-                Check(UiField<Button>(form, "restoreStop").Visible, "stop control is offered while waiting");
-                UiField<Button>(form, "restoreStop").PerformClick();
+                var pendingView = UiField<Control>(form, "pendingView");
+                Check(PumpUntil(() => UiField<string>(pendingView, "hint").Contains("尚未就绪"), 1000),
+                    "content waiting surface shows the Shell failure reason and the retry");
+                var stopButton = UiField<Button>(pendingView, "actionButton");
+                Check(stopButton.Visible, "stop control is offered on the content waiting surface");
+                stopButton.PerformClick();
                 PumpTask(pending);
                 Check(stopHost.Sessions.Count == 0 && stopService.Creates == 1,
                     "stopping the wait cancels further retries and keeps the batch stopped");
-                Check(UiField<Label>(form, "restoreBannerText").Text.Contains("已停止恢复"),
-                    "stopped restore reports that remaining tabs can be opened manually");
+                Check(pendingView.Visible && UiField<string>(pendingView, "title").Contains("已停止"),
+                    "stopped restore keeps a content result explaining remaining tabs can be opened manually");
+                UiField<Button>(pendingView, "actionButton").PerformClick();
+                Check(!pendingView.Visible, "closing the stopped result returns to the empty content area");
             }
             var permanentHost = new HostController(new FakeWindows(), new FakeStore()); var permanentService = new WorkspaceService();
             permanentService.CreateFailures.Enqueue(new ExplorerDirectoryUnavailableException(@"C:\Gone"));
@@ -179,8 +184,10 @@ namespace ExplorerTabs.Tests
                 PumpTask(WorkspaceTask(form, "OpenWorkspaceAsync", SampleWorkspace()));
                 Check(permanentService.Creates == 2 && permanentHost.Sessions.Count == 1,
                     "missing directory is reported once and the batch continues without infinite retry");
-                Check(UiField<Label>(form, "restoreBannerText").Text.Contains("文件夹不存在"),
-                    "permanent failure reason stays visible in the restore banner");
+                var pendingView = UiField<Control>(form, "pendingView");
+                Check(pendingView.Visible && UiField<string>(pendingView, "title").Contains("未打开") &&
+                    UiField<string>(pendingView, "hint").Contains("文件夹不存在"),
+                    "permanent failure reason stays visible on the content result surface");
             }
         }
         private static void StartupRecoveryOfferTests(string directory)

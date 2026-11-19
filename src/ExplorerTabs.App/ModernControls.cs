@@ -189,6 +189,8 @@ namespace ExplorerTabs.App
     internal sealed class PendingCreationPanel : Panel
     {
         private readonly Timer timer = new Timer { Interval = 40 };
+        private readonly ActionButton actionButton = new ActionButton("停止") { Width = 96, Height = 30, Visible = false };
+        private Action? action;
         private string title = "正在打开新的 Explorer 窗口…";
         private string hint = "Explorer 正在准备目录，完成后会自动切换。";
         private float angle;
@@ -198,13 +200,31 @@ namespace ExplorerTabs.App
             SetStyle(ControlStyles.ResizeRedraw | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
             timer.Tick += (_, __) => { angle = (angle + 24F) % 360F; Invalidate(); };
             VisibleChanged += (_, __) => { if (Visible) timer.Start(); else timer.Stop(); };
+            actionButton.Click += (_, __) => { var callback = action; callback?.Invoke(); };
+            Controls.Add(actionButton);
         }
-        public void Begin(string title, string hint)
+        public void Begin(string title, string hint, Action? action = null, string actionText = "停止")
         {
             this.title = title; this.hint = hint; angle = 0;
+            this.action = action;
+            actionButton.Text = actionText; actionButton.AccessibleName = actionText;
+            actionButton.Enabled = true; actionButton.Visible = action != null;
+            LayoutAction();
             Visible = true; timer.Start(); Invalidate();
         }
-        public void End() { timer.Stop(); Visible = false; }
+        /// <summary>Updates progress text without restarting the spinner or changing the action button.</summary>
+        public void Update(string title, string hint)
+        {
+            this.title = title; this.hint = hint; Invalidate();
+        }
+        public void DisableAction() => actionButton.Enabled = false;
+        public void End() { timer.Stop(); Visible = false; action = null; actionButton.Visible = false; }
+        protected override void OnSizeChanged(EventArgs e) { base.OnSizeChanged(e); LayoutAction(); }
+        private void LayoutAction()
+        {
+            float scale = DeviceDpi / 96F;
+            actionButton.Location = new Point((Width - actionButton.Width) / 2, Height / 2 + (int)(52 * scale));
+        }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
@@ -219,8 +239,10 @@ namespace ExplorerTabs.App
             using (var font = new Font(Font.FontFamily, 13F, FontStyle.Bold))
                 TextRenderer.DrawText(graphics, title, font, new Rectangle(0, centerY - (int)(42 * scale), Width, (int)(30 * scale)),
                     HostTheme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-            TextRenderer.DrawText(graphics, hint, Font, new Rectangle(0, centerY - (int)(8 * scale), Width, (int)(28 * scale)),
-                Color.FromArgb(108, 122, 143), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+            TextRenderer.DrawText(graphics, hint, Font,
+                new Rectangle(0, centerY - (int)(8 * scale), Width, (int)(44 * scale)),
+                Color.FromArgb(108, 122, 143),
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
         }
         protected override void Dispose(bool disposing)
         {

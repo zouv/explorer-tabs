@@ -107,6 +107,7 @@ namespace ExplorerTabs.App
             LocationChanged += (_, __) => { CaptureWindowPlacement(); LayoutCurrent(); };
             Resize += (_, __) =>
             {
+                TrackWindowStateForRestore();
                 CaptureWindowPlacement();
                 SyncTopResizeBand();
                 SyncShortcutScope(); // Disable immediately when minimised, not at the next monitor tick.

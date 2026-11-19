@@ -107,7 +107,9 @@ namespace ExplorerTabs.App
             int restored = 0; bool stopped = false;
             try
             {
-                BeginRestoreBanner(saved);
+                BeginRestoreView(saved);
+                try { controller.SetActiveVisible(false); }
+                catch (Exception error) { log.Write("Restore pending view could not hide the active window", error); }
                 status.Text = $"正在恢复「{saved.Name}」；可随时停止，已打开的标签会保留。";
                 log.Write($"Workspace restore started; session={saved.Name}; tabs={saved.Tabs.Count}");
                 for (int i = 0; i < saved.Tabs.Count; i++)
@@ -149,12 +151,14 @@ namespace ExplorerTabs.App
                 if (!IsDisposed && !closing)
                 {
                     if (desired != null || first != null) SelectTab(desired ?? first!);
-                    RefreshTabs(); CompleteRestoreBanner(restored, saved.Tabs.Count, failures, stopped);
+                    RefreshTabs();
+                    if (stopped || failures.Count > 0) ShowRestoreResult(restored, saved.Tabs.Count, failures, stopped);
+                    else { restoringWorkspace = false; pendingView.End(); RestoreActiveAfterPending(); }
                     status.Text = stopped
                         ? $"已停止恢复：已打开 {restored} / {saved.Tabs.Count} 个标签；其余可手动新建。"
                         : failures.Count == 0
                             ? $"恢复完成：已打开 {restored} 个标签。"
-                            : $"恢复完成：已打开 {restored} 个；{failures.Count} 个未打开（详见提示条与日志）。";
+                            : $"恢复完成：已打开 {restored} 个；{failures.Count} 个未打开（详见当前提示与日志）。";
                 }
                 log.Write($"Workspace restore finished; session={saved.Name}; restored={restored}; failed={failures.Count}; stopped={stopped}");
             }
@@ -163,14 +167,20 @@ namespace ExplorerTabs.App
                 stopped = true;
                 if (!IsDisposed && !closing)
                 {
-                    CompleteRestoreBanner(restored, saved.Tabs.Count, failures, true);
+                    if (desired != null || first != null) SelectTab(desired ?? first!);
+                    RefreshTabs();
+                    ShowRestoreResult(restored, saved.Tabs.Count, failures, true);
                     status.Text = $"已停止恢复：已打开 {restored} / {saved.Tabs.Count} 个标签；其余可手动新建。";
                 }
                 log.Write($"Workspace restore stopped by user; restored={restored}; failed={failures.Count}");
             }
             finally
             {
-                AbandonRestoreBanner();
+                if (restoringWorkspace)
+                {
+                    restoringWorkspace = false;
+                    if (!IsDisposed) pendingView.End();
+                }
                 workspaceOperation = null; operation.Dispose(); if (!IsDisposed && !closing) SetCreationControls(creation != null);
             }
         }

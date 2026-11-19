@@ -32,13 +32,6 @@ namespace ExplorerTabs.App
         private readonly Label sessionOfferText = new Label { AutoSize = true, Margin = new Padding(4, 5, 4, 5) };
         private readonly ActionButton sessionOfferRestore = new ActionButton("重新打开上次会话", true) { Width = 176, Height = 30 };
         private readonly ActionButton sessionOfferDismiss = new ActionButton("暂不打开") { Width = 88, Height = 30 };
-        // Restore feedback lives next to the startup offer. It must stay visible while the
-        // Shell is starting up and the batch is waiting to retry, and users can stop waiting.
-        private readonly FlowLayoutPanel restoreBanner = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(8, 4, 8, 4), BackColor = Color.FromArgb(230, 239, 252), Visible = false };
-        private readonly Label restoreBannerText = new Label { AutoSize = true, Margin = new Padding(4, 5, 4, 5) };
-        private readonly ActionButton restoreStop = new ActionButton("停止恢复", true) { Width = 96, Height = 30 };
-        private readonly ActionButton restoreClose = new ActionButton("关闭") { Width = 76, Height = 30, Visible = false };
-        private static readonly Color RestoreWaitColor = Color.FromArgb(255, 246, 222);
         private bool restoringWorkspace;
         private SavedWorkspace? offeredSession;
         private int startupMissingWindows;
@@ -99,12 +92,6 @@ namespace ExplorerTabs.App
             sessionOffer.SetFlowBreak(sessionOfferText, true);
             sessionOffer.SizeChanged += (_, __) => LayoutSessionOffer();
             Controls.Add(sessionOffer); Controls.SetChildIndex(sessionOffer, Controls.GetChildIndex(chrome!) - 1);
-            restoreStop.Click += (_, __) => StopWorkspaceRestore();
-            restoreClose.Click += (_, __) => restoreBanner.Visible = false;
-            restoreBanner.Controls.AddRange(new Control[] { restoreBannerText, restoreStop, restoreClose });
-            restoreBanner.SetFlowBreak(restoreBannerText, true);
-            restoreBanner.SizeChanged += (_, __) => LayoutRestoreBanner();
-            Controls.Add(restoreBanner); Controls.SetChildIndex(restoreBanner, Controls.GetChildIndex(sessionOffer) - 1);
             tabs.ConfigureLayout(settings.WrapTabs, settings.MaximumTabRows);
         }
         // Menu opening owns a modal scope. Do not include modalDepth here: queued actions
@@ -213,73 +200,51 @@ namespace ExplorerTabs.App
             int width = Math.Max(1, sessionOffer.ClientSize.Width - sessionOffer.Padding.Horizontal - sessionOfferText.Margin.Horizontal);
             if (sessionOfferText.MaximumSize.Width != width) sessionOfferText.MaximumSize = new Size(width, 0);
         }
-        private void BeginRestoreBanner(SavedWorkspace saved)
+        private void BeginRestoreView(SavedWorkspace saved)
         {
             restoringWorkspace = true;
-            restoreBanner.BackColor = sessionOffer.BackColor;
-            restoreBannerText.Text = $"正在恢复「{saved.Name}」…";
-            restoreStop.Visible = true; restoreStop.Enabled = true;
-            restoreClose.Visible = false;
-            restoreBanner.Visible = true;
-            LayoutRestoreBanner();
+            pendingView.Begin($"正在恢复「{saved.Name}」…", "正在读取已保存的目录；可随时停止。", StopWorkspaceRestore, "停止恢复");
         }
         private void ShowRestoreProgress(SavedWorkspace saved, int index, int attempt)
         {
             if (!restoringWorkspace || IsDisposed) return;
-            restoreBanner.BackColor = sessionOffer.BackColor;
-            restoreBannerText.Text = $"正在恢复「{saved.Name}」：{index + 1} / {saved.Tabs.Count} · {saved.Tabs[index].Directory}" +
-                (attempt > 0 ? $"（第 {attempt + 1} 次尝试）" : "");
-            LayoutRestoreBanner();
+            pendingView.Update($"正在恢复「{saved.Name}」…",
+                $"{index + 1} / {saved.Tabs.Count} · {saved.Tabs[index].Directory}" + (attempt > 0 ? $"（第 {attempt + 1} 次尝试）" : ""));
         }
         private void ShowRestoreWaiting(SavedWorkspace saved, int index, int attempt, Exception error, TimeSpan delay)
         {
             if (!restoringWorkspace || IsDisposed) return;
-            restoreBanner.BackColor = RestoreWaitColor;
-            restoreBannerText.Text = $"正在恢复「{saved.Name}」：{index + 1} / {saved.Tabs.Count} · {saved.Tabs[index].Directory}\r\n" +
-                $"{WorkspaceRestorePolicy.Describe(error)}；{Math.Max(1, (int)Math.Ceiling(delay.TotalSeconds))} 秒后进行第 {attempt + 1} 次尝试…";
-            LayoutRestoreBanner();
+            pendingView.Update($"正在恢复「{saved.Name}」…",
+                $"{index + 1} / {saved.Tabs.Count} · {WorkspaceRestorePolicy.Describe(error)}；" +
+                $"{Math.Max(1, (int)Math.Ceiling(delay.TotalSeconds))} 秒后进行第 {attempt + 1} 次尝试…");
         }
         private void ShowRestoreBusy(SavedWorkspace saved, int index)
         {
             if (!restoringWorkspace || IsDisposed) return;
-            restoreBanner.BackColor = RestoreWaitColor;
-            restoreBannerText.Text = $"正在恢复「{saved.Name}」：{index + 1} / {saved.Tabs.Count} · 正在等待上一次 Shell 调用结束…";
-            LayoutRestoreBanner();
+            pendingView.Update($"正在恢复「{saved.Name}」…",
+                $"{index + 1} / {saved.Tabs.Count} · 正在等待上一次 Shell 调用结束…");
         }
-        private void CompleteRestoreBanner(int restored, int total, IReadOnlyList<string> failures, bool stopped)
+        private void ShowRestoreResult(int restored, int total, IReadOnlyList<string> failures, bool stopped)
         {
-            if (!restoringWorkspace || IsDisposed) return;
-            restoringWorkspace = false;
-            restoreStop.Visible = false;
-            restoreClose.Visible = true;
-            restoreBanner.BackColor = stopped || failures.Count > 0 ? RestoreWaitColor : sessionOffer.BackColor;
-            restoreBannerText.Text = stopped
-                ? $"已停止恢复：已打开 {restored} / {total} 个标签；其余可手动新建。"
-                : failures.Count == 0
-                    ? $"恢复完成：已打开 {restored} / {total} 个标签。"
-                    : $"恢复完成：已打开 {restored} / {total} 个标签；{failures.Count} 个未打开：\r\n" + string.Join("\r\n", failures);
-            restoreBanner.Visible = true;
-            LayoutRestoreBanner();
-        }
-        private void AbandonRestoreBanner()
-        {
-            if (!restoringWorkspace) return;
-            restoringWorkspace = false;
             if (IsDisposed) return;
-            restoreStop.Visible = false; restoreClose.Visible = false; restoreBanner.Visible = false;
+            restoringWorkspace = false;
+            string title = stopped ? "恢复已停止" : "部分目录未打开";
+            string hint = stopped
+                ? $"已打开 {restored} / {total} 个标签；其余可手动新建。"
+                : $"已打开 {restored} / {total} 个标签；{failures.Count} 个未打开：\r\n{failures[0]}";
+            pendingView.Begin(title, hint, CloseRestoreResult, "关闭");
+        }
+        private void CloseRestoreResult()
+        {
+            pendingView.End();
+            RestoreActiveAfterPending();
         }
         private void StopWorkspaceRestore()
         {
             if (!restoringWorkspace || workspaceOperation == null) return;
-            restoreStop.Enabled = false;
-            restoreBannerText.Text = "正在停止恢复…已打开的标签会保留。";
-            LayoutRestoreBanner();
+            pendingView.DisableAction();
+            pendingView.Update("正在停止恢复…", "已打开的标签会保留。");
             workspaceOperation.Cancel();
-        }
-        private void LayoutRestoreBanner()
-        {
-            int width = Math.Max(1, restoreBanner.ClientSize.Width - restoreBanner.Padding.Horizontal - restoreBannerText.Margin.Horizontal);
-            if (restoreBannerText.MaximumSize.Width != width) restoreBannerText.MaximumSize = new Size(width, 0);
         }
         private void ShowAddWindowsMenu()
         {
