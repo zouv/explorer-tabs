@@ -57,7 +57,7 @@
 ### 3.7 打包与出包目录
 - 当前正式版本 0.13.0（2026-11-13），`v0.13.0` 标签固定指向代码提交 `fe74c7b`；正式双 zip + SHA256SUMS 已发布并经远端 digest / 下载核验，详见 CHANGELOG 0.13.0。构建阶段 1138 项安全检查通过；正式包原始二进制另在独立 runner 复跑 1113 项可执行检查通过（`.runtime/verification-packaged-v0.13.0.txt`）。发布结果文档另提交，不移动标签或因文档收尾重打已发布包。
 - `package.bat` → `scripts/package.ps1`；版本只从 `Directory.Build.props` 的 `<Version>` 读取，不在脚本里写死。
-- 根目录 `build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `dev.bat` / `ci.bat` 只做参数透传与前置检查，构建 / 测试逻辑仍集中在 `scripts/build.ps1`；`verify.bat` 用 `-TreatWarningsAsErrors` 传入警告即错误并追加 `check-docs.sh`，`clean.bat` 不 taskkill，`run.bat` 仅由用户显式启动；`dev.bat` 先构建、再运行 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`，并把 `-CloseRunningHost` 传给 build.ps1：检测到已有 ExplorerTabs 时列出 PID / 路径并询问，输入 Y 才先正常关闭、12 秒超时后强制结束，然后继续构建 / 启动，其它输入以退出码 2 取消；非交互输入直接拒绝。
+- 根目录 `build.bat` / `test.bat` / `verify.bat` / `clean.bat` / `run.bat` / `dev.bat` / `ci.bat` 只做参数透传与前置检查，构建 / 测试逻辑仍集中在 `scripts/build.ps1`；`verify.bat` 用 `-TreatWarningsAsErrors` 传入警告即错误并追加 `check-docs.sh`，`clean.bat` 不 taskkill，`run.bat` 仅由用户显式启动；`dev.bat` 先构建、再运行 `.runtime/build/ExplorerTabs-dev/ExplorerTabs.exe`，并把 `-CloseRunningHost` 传给 build.ps1：检测到已有 ExplorerTabs 时列出 PID / 路径并直接强制关闭，然后继续构建 / 启动；`package.bat` 仍先询问，输入 Y 才先正常关闭、12 秒超时后强制结束。
 - 每次先构建到唯一 `.runtime/staging/package-<Guid>`；公共 `package.lock` 用独占文件句柄保护构建 / 发布且不 unlink。EXE / Core 程序集版本一致，两个 zip 的条目数 / 长度 / SHA256 均验证后，才将旧 dev / release 移入本次备份并逐个发布；任一步失败逆序回滚，回滚失败保留 stage 明示路径。成功仅清本次已校验 stage；历史 `dist/vX-release` 与其它暂存目录不动。
 - dev zip 根含 `ExplorerTabs_<版本>_x64-unpack-debug/`；release zip 从暂存 release/unpack 内部打包，发布后落在 `dist/release/unpack`。release 不含 PDB，dev 含 PDB / build-info / logs；release 复制 README.md 及引用图标 / 截图，保证离线可读。
 - 不生成 setup.exe：项目不引入第三方 NuGet 或 Inno Setup，release 以免安装解压包分发。

@@ -158,12 +158,12 @@ test.bat     :: 完整安全自动检查
 verify.bat   :: 警告即错误构建 + 完整安全检查 + 文档体检
 package.bat  :: 打包（检测到运行中宿主时先询问，输入 Y 才关闭）
 run.bat      :: 手动启动 dist\release\unpack（run.bat dev 启动开发快照）
-dev.bat      :: 构建后直接启动开发快照（检测到运行中宿主时先询问，输入 Y 才关闭）
+dev.bat      :: 构建后直接启动开发快照（检测到运行中宿主时直接强制关闭）
 clean.bat    :: 清理 bin / obj / .runtime（保留 dist 与 artifacts）
 ci.bat       :: clean -> verify -> package
 ```
 
-`clean.bat` 不会结束运行中的宿主；`dev.bat` 仅在输入 Y 确认后关闭运行中的 ExplorerTabs 并继续构建 / 启动；`run.bat` 仅用于你手动启动真实交互宿主。
+`clean.bat` 不会结束运行中的宿主；`dev.bat` 检测到运行中的 ExplorerTabs 时直接强制关闭后继续构建 / 启动；`run.bat` 仅用于你手动启动真实交互宿主。
 
 ## 打包
 
